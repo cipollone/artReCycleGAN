@@ -1,0 +1,11 @@
+# Project
+
+# Python
+__pycache__/
+*.pyc
+
+# Vim
+*.sw[po]
+
+# Sys
+.fuse_hidden*
