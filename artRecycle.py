@@ -4,13 +4,17 @@
 Main script file. Implementation of CycleGAN paper with Tensorflow 2.0.
 '''
 
+import os
 import argparse
+import shutil
+import json
 import tensorflow as tf
 
 import data
+import model
 
 # Debug
-from matplotlib import pyplot as plt
+import matplotlib.pyplot as plt
 
 
 def train(args):
@@ -18,10 +22,39 @@ def train(args):
   Training function.
 
   Args:
-    args: namespace of arguments. Run --help for info.
+    args: namespace of arguments. Run 'artRecycle train --help' for info.
   '''
 
-  raise NotImplementedError()
+  # Prepare folders
+  dirs = ('logs', 'models')
+  for d in dirs:
+    if os.path.exists(d):
+      print('Previous models will be erased. Continue (Y/n)? ', end='')
+      c = input()
+      if c in ('y', 'Y', ''): break
+      else: return
+  for d in dirs:
+    if os.path.exists(d):
+      shutil.rmtree(d)
+    os.mkdir(d)
+
+  # Define keras model
+  keras_model = model.model()
+
+  # Create tensorflow graph
+  keras_model.compile()
+
+  # Save keras graph
+  model_path = os.path.join('models', 'model')
+  graph_json = keras_model.to_json()
+  graph_json = json.dumps(json.loads(graph_json), indent=2)
+  with open(model_path+'.json', 'w') as f:
+    f.write(graph_json)
+
+  # Save tensorflow graph
+  # TODO: can i use keras.Model.fit
+
+
 
 
 def use(args):
@@ -29,7 +62,7 @@ def use(args):
   Transform images with the net.
 
   Args:
-    args: namespace of arguments. Run --help for info.
+    args: namespace of arguments. Run 'artRecycle use --help' for info.
   '''
 
   raise NotImplementedError()
@@ -45,7 +78,7 @@ def debug(args):
   print('> Debug')
 
   # Testing the input pipeline
-  dataset = data.load(*args.args, batch=2)
+  dataset = data.load(*args.args, shape=(256,256,3), batch=2)
   for batch in dataset:
     for img in batch:
       plt.imshow(tf.cast(img, dtype=tf.uint8))
@@ -53,20 +86,24 @@ def debug(args):
       input()
 
 
-
 def main():
   '''\
   Main function. Called when this file is executed as script.
   '''
 
+  # Datasets
+  datasets_names = {name for name in data.datasets}
 
-  ## Parsing arguments
+  # Parsing arguments
   parser = argparse.ArgumentParser(description=
       'ArtReCycle: my implementation of CycleGAN with Tensorflow 2.0')
   op_parsers = parser.add_subparsers(help='Operation', dest='op')
 
   # Train op
   train_parser = op_parsers.add_parser('train', help='Train the net')
+  train_parser.add_argument('-d', '--dataset', nargs=2, required=True,
+      choices=datasets_names, metavar=('datasetA', 'datasetB'),
+      help='Input dataset. Choose from: '+str(datasets_names))
 
   # Use op
   use_parser = op_parsers.add_parser('use',

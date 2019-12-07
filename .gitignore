@@ -1,5 +1,8 @@
 # Project
 
+logs/
+models/
+
 # Python
 __pycache__/
 *.pyc

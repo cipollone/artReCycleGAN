@@ -67,7 +67,7 @@ def _dataset_files(name, split):
   return tf.data.Dataset.from_tensor_slices(files), len(files)
 
 
-def load(name, split, batch=None):
+def load(name, split, shape=(256, 256, 3), batch=None):
   '''\
   Returns a Dataset. The dataset is already transformed to create the input
   pipeline.
@@ -75,6 +75,7 @@ def load(name, split, batch=None):
   Args:
     name: a dataset name
     split: 'train' or 'test'
+    shape: desired shape of each image
     batch: how many samples to return. If None, the entire dataset is returned.
 
   Returns:
@@ -86,8 +87,8 @@ def load(name, split, batch=None):
     ''' Parses a single image. '''
 
     img = tf.io.read_file(path)
-    img = tf.image.decode_jpeg(img, channels=3)
-    img = tf.image.resize(img, (256, 256))
+    img = tf.image.decode_jpeg(img, channels=shape[2])
+    img = tf.image.resize(img, shape[0:2])
     return img
 
   # Dataset of paths
