@@ -13,9 +13,6 @@ import tensorflow as tf
 import data
 import model
 
-# Debug
-import matplotlib.pyplot as plt
-
 
 def train(args):
   '''\
@@ -75,12 +72,18 @@ def debug(args):
   Args:
     args: namespace of arguments. Run --help for info.
   '''
+  import matplotlib.pyplot as plt
+  import code
+
   print('> Debug')
 
   # Testing the input pipeline
-  dataset = data.load(*args.args, shape=(256,256,3), batch=2)
+  dataset = data.load('classes', 'test', batch=2)
+
+  print(dataset)
   for batch in dataset:
-    for img in batch:
+    for img, label in zip(batch[0], batch[1]):
+      print('label: ',label)
       plt.imshow(tf.cast(img, dtype=tf.uint8))
       plt.show()
       input()
