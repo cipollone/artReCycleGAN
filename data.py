@@ -39,8 +39,14 @@ def _classification_dataset(split):
     split: 'train' or 'test'
 
   Returns:
-    Dataset of all images: (image, label)
+    Dataset of all images (image, label), total number of images
   '''
+
+  # One-hot encoding of labels
+  all_labels = list(datasets.keys())
+  all_labels.sort()
+  one_hot = { label: [int(label == l) for l in all_labels]
+      for label in all_labels }
 
   # Load all
   dataset = None
@@ -49,7 +55,7 @@ def _classification_dataset(split):
 
     # Images and labels
     images, n = _dataset_files(name, split)
-    labels = tf.data.Dataset.from_tensors(name).repeat()
+    labels = tf.data.Dataset.from_tensors(one_hot[name]).repeat()
     dataset_set = tf.data.Dataset.zip((images, labels))
 
     dataset = dataset.concatenate(dataset_set) if dataset else dataset_set
@@ -108,9 +114,10 @@ def load(name, split, shape=(256, 256, 3), batch=None):
     batch: how many samples to return. If None, the entire dataset is returned.
 
   Returns:
-    Tf Dataset
+    Tf Dataset, dataset size
   '''
   # TODO: incorrect image ratios. Missing random crop, flip etc
+  # TODO: validation split
 
   # Is this a classification task? Just for development
   classification = (name == 'classes')
@@ -141,9 +148,10 @@ def load(name, split, shape=(256, 256, 3), batch=None):
 
   # Input pipeline
   images = images.shuffle(min(size, 10000))
-  images = images.repeat()
-  images = images.map(load_image if not classification else load_labelled_image)
+  if split == 'train': images = images.repeat()
+  images = images.map(load_image \
+      if not classification else load_labelled_image)
   images = images.batch(batch)
   images = images.prefetch(1)
 
-  return images
+  return images, size

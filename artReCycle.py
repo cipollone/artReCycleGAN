@@ -35,23 +35,45 @@ def train(args):
       shutil.rmtree(d)
     os.mkdir(d)
 
-  # Define keras model
-  keras_model = model.model()
+  # Define datasets
+  input_shape = (256, 256, 3)
+  train_dataset, train_size = data.load('classes', 'train',
+      shape=input_shape, batch=args.batch)
+  test_dataset, test_size = data.load('classes', 'test',
+      shape=input_shape, batch=args.batch)
 
-  # Create tensorflow graph
-  keras_model.compile()
+  # Define keras model (classification task for now)
+  keras_model = model.classifier(
+      input_shape = input_shape,
+      num_classes = len(data.datasets))
+  model_name = 'classifier'
 
   # Save keras graph
-  model_path = os.path.join('models', 'model')
+  model_path = os.path.join('models', model_name)
   graph_json = keras_model.to_json()
   graph_json = json.dumps(json.loads(graph_json), indent=2)
   with open(model_path+'.json', 'w') as f:
     f.write(graph_json)
 
-  # Save tensorflow graph
-  # TODO: can i use keras.Model.fit
+  # Create tensorflow graph
+  keras_model.compile(
+      optimizer = tf.keras.optimizers.Adam(learning_rate=args.rate),
+      loss = tf.losses.CategoricalCrossentropy(),
+      metrics = [tf.keras.metrics.CategoricalAccuracy()]
+    )
 
+  # Training settings
+  steps_per_epoch = int(train_size/args.batch) \
+      if not args.epoch_steps else args.epoch_steps
 
+  # Train. TODO: callbacks
+  keras_model.fit(train_dataset,
+      epochs = args.epochs,
+      steps_per_epoch = steps_per_epoch
+    )
+
+  # Evaluate
+  keras_model.evaluate(test_dataset)
 
 
 def use(args):
@@ -78,7 +100,7 @@ def debug(args):
   print('> Debug')
 
   # Testing the input pipeline
-  dataset = data.load('classes', 'test', batch=2)
+  dataset, _ = data.load('classes', 'test', batch=2)
 
   print(dataset)
   for batch in dataset:
@@ -94,6 +116,11 @@ def main():
   Main function. Called when this file is executed as script.
   '''
 
+  # Default settings
+  batch_size = 30
+  learning_rate = 0.001
+  epochs = 1
+
   # Datasets
   datasets_names = {name for name in data.datasets}
 
@@ -105,8 +132,16 @@ def main():
   # Train op
   train_parser = op_parsers.add_parser('train', help='Train the net')
   train_parser.add_argument('-d', '--dataset', nargs=2, required=True,
-      choices=datasets_names, metavar=('datasetA', 'datasetB'),
+      type=str, choices=datasets_names, metavar=('datasetA', 'datasetB'),
       help='Input dataset. Choose from: '+str(datasets_names))
+  train_parser.add_argument('-b', '--batch', type=int, default=batch_size,
+      help='Number of elements in each batch')
+  train_parser.add_argument('-r', '--rate', type=float, default=learning_rate,
+      help='Learning rate')
+  train_parser.add_argument('-e', '--epochs', type=int, default=epochs,
+      help='Number of epochs to train')
+  train_parser.add_argument('--epoch_steps', type=int, default=None,
+      help='Number of steps in each epoch')
 
   # Use op
   use_parser = op_parsers.add_parser('use',
