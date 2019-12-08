@@ -102,7 +102,33 @@ def _dataset_files(name, split):
   return tf.data.Dataset.from_tensor_slices(files), len(files)
 
 
-def load(name, split, shape=(256, 256, 3), batch=None):
+def decode_image(path, out_shape):
+  '''\
+  Decodes a single image from path and resize it to the given dimension.
+
+  Args:
+    path: image file path
+    out_shape: desired shape of each image
+  Returns:
+    An image Tensor
+  '''
+
+  # Read
+  img = tf.io.read_file(path)
+  img = tf.image.decode_jpeg(img, channels=out_shape[2])
+
+  # Square crop
+  shape = tf.shape(img)
+  square_size = tf.reduce_min(shape[:2])
+  img = tf.image.random_crop(img, [square_size, square_size, shape[2]])
+
+  # Resize
+  img = tf.image.resize(img, out_shape[:2])
+
+  return img
+
+
+def load(name, split, shape=(300, 300, 3), batch=None):
   '''\
   Returns a Dataset. The dataset is already transformed to create the input
   pipeline.
@@ -116,26 +142,15 @@ def load(name, split, shape=(256, 256, 3), batch=None):
   Returns:
     Tf Dataset, dataset size
   '''
-  # TODO: incorrect image ratios. Missing random crop, flip etc
 
   # Is this a classification task? Just for development
   classification = (name == 'classes')
 
   def load_image(path):
-    ''' Parses a single image. '''
-
-    img = tf.io.read_file(path)
-    img = tf.image.decode_jpeg(img, channels=shape[2])
-    img = tf.image.resize(img, shape[0:2])
-    return img
+    return decode_image(path, shape)
 
   def load_labelled_image(path, label):
-    ''' Parses a single image with a label. '''
-
-    img = tf.io.read_file(path)
-    img = tf.image.decode_jpeg(img, channels=shape[2])
-    img = tf.image.resize(img, shape[0:2])
-    return img, label
+    return decode_image(path, shape), label
 
   # Dataset of paths
   images, size = _dataset_files(name, split) \
@@ -149,7 +164,8 @@ def load(name, split, shape=(256, 256, 3), batch=None):
   images = images.shuffle(min(size, 10000))
   if split == 'train': images = images.repeat()
   images = images.map(load_image \
-      if not classification else load_labelled_image)
+      if not classification else load_labelled_image,
+      num_parallel_calls=tf.data.experimental.AUTOTUNE)
   images = images.batch(batch)
   images = images.prefetch(1)
 
