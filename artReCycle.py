@@ -12,6 +12,55 @@ import tensorflow as tf
 
 import data
 import model
+from customizations import *
+
+
+def _prepare_directories(model_name, resume=False):
+  '''\
+  Prepares empty directories where logs and models are saved.
+  'log directory' refers to the path of the current log.
+  'logs 'directory' refers to the path of all logs (parent dir).
+
+  Args:
+    model_name: identifier for this training job
+    resume: if true, directories are not erased.
+  Returns:
+    model directory, log directory, logs directory
+  '''
+
+  # Base paths
+  model_path = os.path.join('models', model_name)
+  logs_path = os.path.join('logs', model_name)
+  dirs = (model_path, logs_path)
+
+  # Erase?
+  if not resume:
+
+    # Existing?
+    existing = []
+    for d in dirs:
+      if os.path.exists(d):
+        existing.append(d)
+
+    # Confirm
+    if existing:
+      print('Erasing', *existing, '. Continue (Y/n)? ', end='')
+      c = input()
+      if not c in ('y', 'Y', ''): quit()
+
+    # New
+    for d in existing:
+      shutil.rmtree(d)
+    for d in dirs:
+      os.makedirs(d)
+
+  # Logs alwas use new directories (using increasing numbers)
+  i = 0
+  while os.path.exists(os.path.join(logs_path, str(i))): i += 1
+  log_path = os.path.join(logs_path, str(i))
+  os.mkdir(log_path)
+
+  return (model_path, log_path, logs_path)
 
 
 def train(args):
@@ -22,18 +71,10 @@ def train(args):
     args: namespace of arguments. Run 'artRecycle train --help' for info.
   '''
 
-  # Prepare folders
-  dirs = ('logs', 'models')
-  for d in dirs:
-    if os.path.exists(d):
-      print('Previous models will be erased. Continue (Y/n)? ', end='')
-      c = input()
-      if c in ('y', 'Y', ''): break
-      else: return
-  for d in dirs:
-    if os.path.exists(d):
-      shutil.rmtree(d)
-    os.mkdir(d)
+  # Model name and paths
+  model_name = '{}|{}'.format(*args.datasets)
+  model_path, log_path, logs_path = _prepare_directories(
+      model_name, resume=args.cont)
 
   # Define datasets
   input_shape = (256, 256, 3)
@@ -42,34 +83,64 @@ def train(args):
   test_dataset, test_size = data.load('classes', 'test',
       shape=input_shape, batch=args.batch)
 
-  # Define keras model (classification task for now)
-  keras_model = model.classifier(
-      input_shape = input_shape,
-      num_classes = len(data.datasets))
-  model_name = 'classifier'
+  # If new training (not resuming)
+  if not args.cont:
 
-  # Save keras graph
-  model_path = os.path.join('models', model_name)
-  graph_json = keras_model.to_json()
-  graph_json = json.dumps(json.loads(graph_json), indent=2)
-  with open(model_path+'.json', 'w') as f:
-    f.write(graph_json)
+    # Define keras model (classification task for now)
+    keras_model = model.classifier(
+        input_shape = input_shape,
+        num_classes = len(data.datasets)
+      )
 
-  # Create tensorflow graph
-  keras_model.compile(
-      optimizer = tf.keras.optimizers.Adam(learning_rate=args.rate),
-      loss = tf.losses.CategoricalCrossentropy(),
-      metrics = [tf.keras.metrics.CategoricalAccuracy()]
-    )
+    # Save keras graph
+    graph_json = keras_model.to_json()
+    graph_json = json.dumps(json.loads(graph_json), indent=2)
+    with open(os.path.join(model_path,'keras.json'), 'w') as f:
+      f.write(graph_json)
+
+    # Create tensorflow graph
+    keras_model.compile(
+        optimizer = tf.keras.optimizers.Adam(learning_rate=args.rate),
+        loss = tf.losses.CategoricalCrossentropy(),
+        metrics = [tf.keras.metrics.CategoricalAccuracy()]
+      )
+
+  # If resuming
+  else:
+    # Load model
+    keras_model = tf.keras.models.load_model(model_path)
 
   # Training settings
   steps_per_epoch = int(train_size/args.batch) \
       if not args.epoch_steps else args.epoch_steps
 
-  # Train. TODO: callbacks
+  # Step saver
+  counter_saver_callback = CountersSaverCallback(logs_path)
+  step = counter_saver_callback.step
+  epoch = counter_saver_callback.epoch
+
+  # Callbacks
+  callbacks = [
+      tf.keras.callbacks.ModelCheckpoint(
+        filepath = model_path, monitor = 'loss', save_best_only = True,
+        mode = 'max', save_freq = 'epoch', save_weights_only = False
+      ),
+      TensorBoardWithStep(
+        initial_step = step,
+        log_dir = log_path,
+        write_graph = not args.cont,
+        update_freq = args.logs
+      ),
+      tf.keras.callbacks.TerminateOnNaN(),
+      counter_saver_callback
+    ]
+
+  # Train
   keras_model.fit(train_dataset,
       epochs = args.epochs,
-      steps_per_epoch = steps_per_epoch
+      steps_per_epoch = steps_per_epoch,
+      callbacks = callbacks,
+      initial_epoch = epoch
     )
 
   # Evaluate
@@ -120,6 +191,7 @@ def main():
   batch_size = 30
   learning_rate = 0.001
   epochs = 1
+  log_frequency = 1
 
   # Datasets
   datasets_names = {name for name in data.datasets}
@@ -131,7 +203,7 @@ def main():
 
   # Train op
   train_parser = op_parsers.add_parser('train', help='Train the net')
-  train_parser.add_argument('-d', '--dataset', nargs=2, required=True,
+  train_parser.add_argument('-d', '--datasets', nargs=2, required=True,
       type=str, choices=datasets_names, metavar=('datasetA', 'datasetB'),
       help='Input dataset. Choose from: '+str(datasets_names))
   train_parser.add_argument('-b', '--batch', type=int, default=batch_size,
@@ -142,6 +214,10 @@ def main():
       help='Number of epochs to train')
   train_parser.add_argument('--epoch_steps', type=int, default=None,
       help='Number of steps in each epoch')
+  train_parser.add_argument('-l', '--logs', type=int, default=log_frequency,
+      help='Save logs after this number of batches')
+  train_parser.add_argument('-c', '--continue', action='store_true', dest='cont',
+      help='Loads most recent saved model and resumes training.')
 
   # Use op
   use_parser = op_parsers.add_parser('use',

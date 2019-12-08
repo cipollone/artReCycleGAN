@@ -117,7 +117,6 @@ def load(name, split, shape=(256, 256, 3), batch=None):
     Tf Dataset, dataset size
   '''
   # TODO: incorrect image ratios. Missing random crop, flip etc
-  # TODO: validation split
 
   # Is this a classification task? Just for development
   classification = (name == 'classes')
