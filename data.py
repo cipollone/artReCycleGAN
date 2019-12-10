@@ -29,6 +29,41 @@ datasets = {
 }
 
 
+def _classification_dataset(split):
+  '''\
+  This dataset is only used during development for a classification task.
+  The purpose is to prepare the general structure for the simplest case, before
+  customizing to GANs.
+
+  Args:
+    split: 'train' or 'test'
+
+  Returns:
+    Dataset of all images (image, label), total number of images
+  '''
+
+  # One-hot encoding of labels
+  all_labels = list(datasets.keys())
+  all_labels.sort()
+  one_hot = { label: [int(label == l) for l in all_labels]
+      for label in all_labels }
+
+  # Load all
+  dataset = None
+  size = 0
+  for name in datasets:
+
+    # Images and labels
+    images, n = _dataset_files(name, split)
+    labels = tf.data.Dataset.from_tensors(one_hot[name]).repeat()
+    dataset_set = tf.data.Dataset.zip((images, labels))
+
+    dataset = dataset.concatenate(dataset_set) if dataset else dataset_set
+    size += n
+
+  return dataset, size
+
+
 def _dataset_files(name, split):
   '''\
   Returns all filenames that compose the requested dataset.
@@ -67,32 +102,59 @@ def _dataset_files(name, split):
   return tf.data.Dataset.from_tensor_slices(files), len(files)
 
 
-def load(name, split, shape=(256, 256, 3), batch=None):
+def decode_image(path, out_shape):
+  '''\
+  Decodes a single image from path and resize it to the given dimension.
+
+  Args:
+    path: image file path
+    out_shape: desired shape of each image
+  Returns:
+    An image Tensor
+  '''
+
+  # Read
+  img = tf.io.read_file(path)
+  img = tf.image.decode_jpeg(img, channels=out_shape[2])
+
+  # Square crop
+  shape = tf.shape(img)
+  square_size = tf.reduce_min(shape[:2])
+  img = tf.image.random_crop(img, [square_size, square_size, shape[2]])
+
+  # Resize
+  img = tf.image.resize(img, out_shape[:2])
+
+  return img
+
+
+def load(name, split, shape=(300, 300, 3), batch=None):
   '''\
   Returns a Dataset. The dataset is already transformed to create the input
   pipeline.
 
   Args:
-    name: a dataset name
+    name: a dataset name. ('classes' is a combined dataset for classification)
     split: 'train' or 'test'
     shape: desired shape of each image
     batch: how many samples to return. If None, the entire dataset is returned.
 
   Returns:
-    Tf Dataset (infinite number of elements)
+    Tf Dataset, dataset size
   '''
-  # TODO: incorrect image ratios. Missing random crop, flip etc
+
+  # Is this a classification task? Just for development
+  classification = (name == 'classes')
 
   def load_image(path):
-    ''' Parses a single image. '''
+    return decode_image(path, shape)
 
-    img = tf.io.read_file(path)
-    img = tf.image.decode_jpeg(img, channels=shape[2])
-    img = tf.image.resize(img, shape[0:2])
-    return img
+  def load_labelled_image(path, label):
+    return decode_image(path, shape), label
 
   # Dataset of paths
-  images, size = _dataset_files(name, split)
+  images, size = _dataset_files(name, split) \
+      if not classification else _classification_dataset(split)
 
   # Select batch
   if not batch or batch < 1 or batch > size :
@@ -100,8 +162,11 @@ def load(name, split, shape=(256, 256, 3), batch=None):
 
   # Input pipeline
   images = images.shuffle(min(size, 10000))
-  images = images.map(load_image)
+  if split == 'train': images = images.repeat()
+  images = images.map(load_image \
+      if not classification else load_labelled_image,
+      num_parallel_calls=tf.data.experimental.AUTOTUNE)
   images = images.batch(batch)
   images = images.prefetch(1)
 
-  return images
+  return images, size
