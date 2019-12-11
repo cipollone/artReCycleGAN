@@ -9,6 +9,7 @@ __pycache__/
 
 # Vim
 *.sw[po]
+/sess
 
 # Sys
 .fuse_hidden*

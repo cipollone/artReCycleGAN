@@ -1,51 +1,72 @@
 '''\
 Networks definitions as keras models.
+Implementations for the CycleGAN model.
+
+Differences from the paper:
+  - Weights initialization
+  - Their implementation, not the paper, contains an additional convolution
+    layer before the last.
 '''
 
 import tensorflow as tf
 from tensorflow.keras import layers
 
+from layers import *
 
-class ImagePreprocessing(layers.Layer):
+
+def generator():
   '''\
-  Initial preprocessing for a batch of images.
-  Random crop, flip, instance normalization.
-  Expects as input, when called, a batch of images.
+  Image to image transformation in CycleGAN.
+  '''
+  pass
+
+
+def discriminator():
+  '''\
+  Image discriminator in CycleGAN (PatchGAN).
+  Each block is a 2d convolution, instance normalization, and LeakyReLU
+  activation. The number of filter double each time, while the image size is
+  halved. The final output is a (sigmoid) map of classifications for
+  {true, false}. With a 256x256 image input, each pixel of the 16x16 output map
+  has 70x70 receptive field.
+
+  Returns:
+    a keras model.
   '''
 
-  def __init__(self, out_size):
-    '''\
-    Create new preprocessing layer.
-    Input (height, width) should be greater than (out_height, out_width).
+  # Parameters
+  filters = 64
+  Activation = lambda: layers.LeakyReLU(0.2)
 
-    Args:
-      out_size: (out_height, out_width) Image size after preprocessing.
-    '''
-    layers.Layer.__init__(self)
-    self._out_size = out_size
+  layers_stack = []   # Layer stack
 
-  
-  def build(self, input_shape):
-    layers.Layer.build(self, input_shape)
-    self._channels = input_shape[-1]
+  # Input block
+  layers_stack += [
+      layers.Conv2D(filters=filters, kernel_size=4, strides=2, padding='same',
+        input_shape=(256,256,3)),   # Forcing input image shape
+      Activation(),
+    ]
 
- 
-  def call(self, inputs):
+  # Other blocks
+  for i in range(3):
 
-    # Some changes
-    batch_shape = tf.shape(inputs)
-    images = tf.image.random_crop(inputs,    # Same for all should be fine
-        [batch_shape[0], self._out_size[0], self._out_size[1], self._channels])
-    images = tf.image.random_flip_left_right(images)
+    filters *= 2
+    layers_stack += [
+      layers.Conv2D(filters=filters, kernel_size=4, strides=2, padding='same'),
+      Activation(),
+      ]
 
-    # Normalization
-    images = tf.image.per_image_standardization(images)
+  # Output block
+  layers_stack += [
+    layers.Conv2D(filters=1, kernel_size=4, strides=1, padding='same'),
+    # Sigmoid activation not applied
+    ]
 
-    return images
+  # Model
+  model = tf.keras.Sequential(layers_stack)
+  return model
 
-
-  def get_config(self):
-    return {'out_size': self._out_size}
+  # TODO: add instance normalization with trainable variables
 
 
 def classifier(input_shape, num_classes):
@@ -63,16 +84,16 @@ def classifier(input_shape, num_classes):
   # Using the simplest API (net copied for tf guide
   model = tf.keras.Sequential([
       ImagePreprocessing(out_size=(256,256,3)),
-      tf.keras.layers.Conv2D(16, 3, padding='same', activation='relu',
+      layers.Conv2D(16, 3, padding='same', activation='relu',
         input_shape=input_shape),
-      tf.keras.layers.MaxPooling2D(),
-      tf.keras.layers.Conv2D(32, 3, padding='same', activation='relu'),
-      tf.keras.layers.MaxPooling2D(),
-      tf.keras.layers.Conv2D(64, 3, padding='same', activation='relu'),
-      tf.keras.layers.MaxPooling2D(),
-      tf.keras.layers.Flatten(),
-      tf.keras.layers.Dense(512, activation='relu'),
-      tf.keras.layers.Dense(num_classes, activation='softmax')
+      layers.MaxPooling2D(),
+      layers.Conv2D(32, 3, padding='same', activation='relu'),
+      layers.MaxPooling2D(),
+      layers.Conv2D(64, 3, padding='same', activation='relu'),
+      layers.MaxPooling2D(),
+      layers.Flatten(),
+      layers.Dense(512, activation='relu'),
+      layers.Dense(num_classes, activation='softmax')
   ])
 
   return model

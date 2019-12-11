@@ -170,18 +170,9 @@ def debug(args):
 
   print('> Debug')
 
-  # Testing the input pipeline
-  dataset, _ = data.load('caravaggio', 'test', batch=4)
-  preprocessing = model.ImagePreprocessing(out_size=(256,256,3))
-
-  print(dataset)
-  for batch in dataset:
-    images = preprocessing(batch)
-    print('New batch')
-    for img in images:
-      plt.imshow(tf.cast(img, dtype=tf.uint8))
-      plt.show()
-      input()
+  # Testing the discriminator structure
+  discriminator = model.discriminator()
+  discriminator.summary()
 
 
 def main():
