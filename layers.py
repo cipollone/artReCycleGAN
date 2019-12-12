@@ -6,15 +6,28 @@ import tensorflow as tf
 from tensorflow.keras import layers
 
 
-class InstanceNormalization():
-  pass
-  # TODO: What is it, and differences with respect to Layer normalization.
+class InstanceNormalization(layers.Layer):
+  '''\
+  Instance normalization substitutes Batch normalization in CycleGan paper.
+  From their original implementation, I see that the affine transformation
+  is not included.
+  '''
+
+  eps = 1e-4
+
+  def call(self, inputs):
+
+    # Normalize in image width height dimensions
+    mean, var = tf.nn.moments(inputs, axes=[1,2], keepdims=True)
+    inputs = (inputs - mean) / tf.sqrt(var + self.eps)
+
+    return inputs
 
 
 class ImagePreprocessing(layers.Layer):
   '''\
   Initial preprocessing for a batch of images.
-  Random crop, flip, instance normalization.
+  Random crop, flip, normalization.
   Expects as input, when called, a batch of images.
   '''
 
@@ -31,8 +44,8 @@ class ImagePreprocessing(layers.Layer):
 
   
   def build(self, input_shape):
-    layers.Layer.build(self, input_shape)
     self._channels = input_shape[-1]
+    layers.Layer.build(self, input_shape)
 
  
   def call(self, inputs):
@@ -44,7 +57,7 @@ class ImagePreprocessing(layers.Layer):
     images = tf.image.random_flip_left_right(images)
 
     # Normalization
-    images = tf.image.per_image_standardization(images)
+    images = images/127.5 - 1
 
     return images
 

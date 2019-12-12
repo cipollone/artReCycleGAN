@@ -2,6 +2,8 @@
 
 logs/
 models/
+/log.txt
+/TODO
 
 # Python
 __pycache__/

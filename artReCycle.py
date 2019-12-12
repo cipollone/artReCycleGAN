@@ -77,7 +77,7 @@ def train(args):
       model_name, resume=args.cont)
 
   # Define datasets
-  input_shape = (256, 256, 3)
+  input_shape = (300, 300, 3)
   train_dataset, train_size = data.load('classes', 'train',
       shape=input_shape, batch=args.batch)
   test_dataset, test_size = data.load('classes', 'test',
@@ -86,11 +86,8 @@ def train(args):
   # If new training (not resuming)
   if not args.cont:
 
-    # Define keras model (classification task for now)
-    keras_model = model.classifier(
-        input_shape = input_shape,
-        num_classes = len(data.datasets)
-      )
+    # Define keras model
+    keras_model = model.debugging_model(input_shape=input_shape)
 
     # Save keras graph
     graph_json = keras_model.to_json()
@@ -101,8 +98,8 @@ def train(args):
     # Create tensorflow graph
     keras_model.compile(
         optimizer = tf.keras.optimizers.Adam(learning_rate=args.rate),
-        loss = tf.losses.CategoricalCrossentropy(),
-        metrics = [tf.keras.metrics.CategoricalAccuracy()]
+        loss = tf.losses.BinaryCrossentropy(from_logits=True),
+        metrics = [tf.keras.metrics.BinaryAccuracy()]
       )
 
   # If resuming
@@ -166,13 +163,27 @@ def debug(args):
     args: namespace of arguments. Run --help for info.
   '''
   import matplotlib.pyplot as plt
-  import code
+  import layers
 
   print('> Debug')
 
-  # Testing the discriminator structure
-  discriminator = model.discriminator()
-  discriminator.summary()
+  # Testing the new classification dataset
+  dataset, size = data.load('classes', 'test', batch=2)
+
+  # Testing preprocessing layer
+  preprocessing = layers.ImagePreprocessing(out_size=(256,256))
+
+  # Show
+  print(dataset, size)
+  for images, labels in dataset:
+    processed_images = preprocessing(images)
+    for img, processed_img, label in zip(images, processed_images, labels):
+      print('min', tf.math.reduce_min(processed_img), 'max',
+          tf.math.reduce_max(processed_img))
+      print('label: ',label, flush=True)
+      plt.imshow(tf.cast(img, dtype=tf.uint8))
+      plt.show()
+      input()
 
 
 def main():

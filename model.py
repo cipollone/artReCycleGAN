@@ -1,12 +1,18 @@
 '''\
 Networks definitions as keras models.
 Implementations for the CycleGAN model.
+I'm not using the Keras functional API, but the Model subclassing, because
+ops have the wrong scope in TensorBoard, otherwise.
 
 Differences from the paper:
   - Weights initialization
   - Their implementation, not the paper, contains an additional convolution
     layer before the last.
+  - In their implementation there's no affine transformation, but this seems
+    strange.
+  - Using a fixed normalization for images in ImagePreprocessing.
 '''
+# TODO: check serialization for custom models
 
 import tensorflow as tf
 from tensorflow.keras import layers
@@ -14,14 +20,31 @@ from tensorflow.keras import layers
 from layers import *
 
 
-def generator():
+def debugging_model(input_shape):
   '''\
-  Image to image transformation in CycleGAN.
+  Returns a model only used for debugging other models.
   '''
-  pass
+
+  class ReduceLayer(layers.Layer):
+    def call(self, inputs):
+      return tf.math.reduce_mean(inputs, axis=(1,2,3))
+  
+  # Testing discriminator as a model (as a classifier).
+  # Adding input, preprocessing, and output
+
+  layers_stack = [
+      ImagePreprocessing((256,256), input_shape=input_shape),
+      DiscriminatorModel(),
+      ReduceLayer(),
+    ]
+
+  keras_model = tf.keras.Sequential(layers_stack)
+  keras_model.summary()
+
+  return keras_model
 
 
-def discriminator():
+class DiscriminatorModel(tf.keras.Model):
   '''\
   Image discriminator in CycleGAN (PatchGAN).
   Each block is a 2d convolution, instance normalization, and LeakyReLU
@@ -29,71 +52,53 @@ def discriminator():
   halved. The final output is a (sigmoid) map of classifications for
   {true, false}. With a 256x256 image input, each pixel of the 16x16 output map
   has 70x70 receptive field.
-
-  Returns:
-    a keras model.
   '''
+  
+  def __init__(self):
 
-  # Parameters
-  filters = 64
-  Activation = lambda: layers.LeakyReLU(0.2)
+    tf.keras.Model.__init__(self, name='Discriminator')
 
-  layers_stack = []   # Layer stack
+    # Parameters
+    filters = 64
+    Activation = lambda: layers.LeakyReLU(0.2)
 
-  # Input block
-  layers_stack += [
-      layers.Conv2D(filters=filters, kernel_size=4, strides=2, padding='same',
-        input_shape=(256,256,3)),   # Forcing input image shape
-      Activation(),
-    ]
+    layers_stack = []   # Layer stack
 
-  # Other blocks
-  for i in range(3):
-
-    filters *= 2
+    # Input block
     layers_stack += [
-      layers.Conv2D(filters=filters, kernel_size=4, strides=2, padding='same'),
-      Activation(),
+        layers.Conv2D(filters=filters, kernel_size=4, strides=2, padding='same',
+          input_shape=(256,256,3)),   # Forcing input image shape
+        Activation(),
       ]
 
-  # Output block
-  layers_stack += [
-    layers.Conv2D(filters=1, kernel_size=4, strides=1, padding='same'),
-    # Sigmoid activation not applied
-    ]
+    # Other blocks
+    for i in range(3):
 
-  # Model
-  model = tf.keras.Sequential(layers_stack)
-  return model
+      filters *= 2
+      layers_stack += [
+        layers.Conv2D(filters=filters, kernel_size=4, strides=2, padding='same'),
+        InstanceNormalization(),
+        Activation(),
+        ]
 
-  # TODO: add instance normalization with trainable variables
+    # Output block
+    layers_stack += [
+      layers.Conv2D(filters=1, kernel_size=4, strides=1, padding='same'),
+      ] # Sigmoid activation not applied
+
+    # Store
+    self._layers_stack = layers_stack
 
 
-def classifier(input_shape, num_classes):
-  '''\
-  Defines a keras model for image classification.
-  Only used for development: classification is not the final project.
+  def call(self, inputs):
 
-  Args:
-    input_shape: Input image shape (height, width, channels)
-    num_classes: number of labels to classify
-  Returns:
-    The keras model
-  '''
+    out = inputs
+    for layer in self._layers_stack:
+      out = layer(out)
 
-  # Using the simplest API (net copied for tf guide
-  model = tf.keras.Sequential([
-      ImagePreprocessing(out_size=(256,256,3)),
-      layers.Conv2D(16, 3, padding='same', activation='relu',
-        input_shape=input_shape),
-      layers.MaxPooling2D(),
-      layers.Conv2D(32, 3, padding='same', activation='relu'),
-      layers.MaxPooling2D(),
-      layers.Conv2D(64, 3, padding='same', activation='relu'),
-      layers.MaxPooling2D(),
-      layers.Flatten(),
-      layers.Dense(512, activation='relu'),
-      layers.Dense(num_classes, activation='softmax')
-  ])
+    return out
 
-  return model
+
+  def get_config(self):
+    return dict()
+

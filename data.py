@@ -31,31 +31,27 @@ datasets = {
 
 def _classification_dataset(split):
   '''\
-  This dataset is only used during development for a classification task.
-  The purpose is to prepare the general structure for the simplest case, before
-  customizing to GANs.
+  This dataset is only used during development as a simple classification task.
+  Classifying monet's (0) over van Gogh's (1).
 
   Args:
     split: 'train' or 'test'
 
   Returns:
-    Dataset of all images (image, label), total number of images
+    Dataset of images (image, label), total number of images
   '''
 
-  # One-hot encoding of labels
-  all_labels = list(datasets.keys())
-  all_labels.sort()
-  one_hot = { label: [int(label == l) for l in all_labels]
-      for label in all_labels }
+  # Used datasets
+  names = ('monet', 'vangogh')
 
   # Load all
   dataset = None
   size = 0
-  for name in datasets:
+  for name, label in zip(names, (0,1)):
 
     # Images and labels
     images, n = _dataset_files(name, split)
-    labels = tf.data.Dataset.from_tensors(one_hot[name]).repeat()
+    labels = tf.data.Dataset.from_tensors(label).repeat()
     dataset_set = tf.data.Dataset.zip((images, labels))
 
     dataset = dataset.concatenate(dataset_set) if dataset else dataset_set
