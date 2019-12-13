@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 
 '''\
-Main script file. Implementation of CycleGAN paper with Tensorflow 2.0.
+Main script file. Implementation of CycleGAN paper.
+Tested with Tensorflow 2.1rc0.
 '''
 
 import os
@@ -11,7 +12,7 @@ import json
 import tensorflow as tf
 
 import data
-import model
+import models
 from customizations import *
 
 
@@ -76,6 +77,9 @@ def train(args):
   model_path, log_path, logs_path = _prepare_directories(
       model_name, resume=args.cont)
 
+  model_json = os.path.join(model_path, 'keras.json')
+  model_checkpoint = os.path.join(model_path, 'model')
+
   # Define datasets
   input_shape = (300, 300, 3)
   train_dataset, train_size = data.load('classes', 'train',
@@ -87,25 +91,33 @@ def train(args):
   if not args.cont:
 
     # Define keras model
-    keras_model = model.debugging_model(input_shape=input_shape)
+    keras_model = models.DebuggingModel(input_shape=input_shape)
 
     # Save keras graph
     graph_json = keras_model.to_json()
     graph_json = json.dumps(json.loads(graph_json), indent=2)
-    with open(os.path.join(model_path,'keras.json'), 'w') as f:
+    with open(model_json, 'w') as f:
       f.write(graph_json)
 
     # Create tensorflow graph
-    keras_model.compile(
+    keras_model.compile_with_defaults(
         optimizer = tf.keras.optimizers.Adam(learning_rate=args.rate),
-        loss = tf.losses.BinaryCrossentropy(from_logits=True),
-        metrics = [tf.keras.metrics.BinaryAccuracy()]
       )
 
   # If resuming
   else:
-    # Load model
-    keras_model = tf.keras.models.load_model(model_path)
+
+    # Identifiers of custom models
+    my_models = { name: getattr(models, name) for name in dir(models)
+        if name.endswith('Model') }
+
+    # Reload keras model
+    with open(model_json) as f:
+      graph_json = f.read()
+    keras_model = tf.keras.models.model_from_json(graph_json,
+        custom_objects = my_models)
+
+    # TODO: recompile + weights?
 
   # Training settings
   steps_per_epoch = int(train_size/args.batch) \
@@ -119,8 +131,8 @@ def train(args):
   # Callbacks
   callbacks = [
       tf.keras.callbacks.ModelCheckpoint(
-        filepath = model_path, monitor = 'loss', save_best_only = True,
-        mode = 'max', save_freq = 'epoch', save_weights_only = False
+        filepath = model_checkpoint, monitor = 'loss', save_best_only = True,
+        mode = 'max', save_freq = 'epoch', save_weights_only = True
       ),
       TensorBoardWithStep(
         initial_step = step,
@@ -216,8 +228,8 @@ def main():
       help='Learning rate')
   train_parser.add_argument('-e', '--epochs', type=int, default=epochs,
       help='Number of epochs to train')
-  train_parser.add_argument('--epoch_steps', type=int, default=None,
-      help='Number of steps in each epoch')
+  train_parser.add_argument('-s', '--epoch_steps', type=int, default=None,
+      help='Force a specific number of steps in each epoch')
   train_parser.add_argument('-l', '--logs', type=int, default=log_frequency,
       help='Save logs after this number of batches')
   train_parser.add_argument('-c', '--continue', action='store_true', dest='cont',

@@ -15,6 +15,10 @@ class InstanceNormalization(layers.Layer):
 
   eps = 1e-4
 
+  def __init__(self, **kargs):
+    kargs.setdefault('name', 'InstanceNormalization')
+    layers.Layer.__init__(self, **kargs)
+
   def call(self, inputs):
 
     # Normalize in image width height dimensions
@@ -31,7 +35,7 @@ class ImagePreprocessing(layers.Layer):
   Expects as input, when called, a batch of images.
   '''
 
-  def __init__(self, out_size, **kwargs):
+  def __init__(self, out_size, **kargs):
     '''\
     Create new preprocessing layer.
     Input (height, width) should be greater than (out_height, out_width).
@@ -39,7 +43,8 @@ class ImagePreprocessing(layers.Layer):
     Args:
       out_size: (out_height, out_width) Image size after preprocessing.
     '''
-    layers.Layer.__init__(self, **kwargs)
+    kargs.setdefault('name', 'ImagePreprocessing')
+    layers.Layer.__init__(self, **kargs)
     self._out_size = out_size
 
   

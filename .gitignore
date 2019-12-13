@@ -12,6 +12,7 @@ __pycache__/
 # Vim
 *.sw[po]
 /sess
+/.ycm_extra_conf.py
 
 # Sys
 .fuse_hidden*
