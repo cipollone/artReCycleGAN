@@ -91,7 +91,9 @@ def train(args):
   if not args.cont:
 
     # Define keras model
-    keras_model = models.DebuggingModel(input_shape=input_shape)
+    inputs = tf.keras.Input(shape=input_shape)
+    outputs = models.Debugging()(inputs)
+    keras_model = tf.keras.Model(inputs=inputs, outputs=outputs)
 
     # Save keras graph
     graph_json = keras_model.to_json()
@@ -100,22 +102,19 @@ def train(args):
       f.write(graph_json)
 
     # Create tensorflow graph
-    keras_model.compile_with_defaults(
+    keras_model.compile(
         optimizer = tf.keras.optimizers.Adam(learning_rate=args.rate),
+        loss = tf.losses.BinaryCrossentropy(),
+        metrics = [tf.keras.metrics.BinaryAccuracy()],
       )
 
   # If resuming
   else:
 
-    # Identifiers of custom models
-    my_models = { name: getattr(models, name) for name in dir(models)
-        if name.endswith('Model') }
-
     # Reload keras model
     with open(model_json) as f:
       graph_json = f.read()
-    keras_model = tf.keras.models.model_from_json(graph_json,
-        custom_objects = my_models)
+    keras_model = tf.keras.models.model_from_json(graph_json)
 
     # TODO: recompile + weights?
 

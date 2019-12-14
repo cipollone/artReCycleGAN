@@ -1,9 +1,7 @@
 '''\
-Networks definitions as keras models.
+Networks definitions.
 Implementations for the CycleGAN model.
-I'm not using the Keras functional API, but the Model subclassing, because
-ops have the wrong scope in TensorBoard, otherwise.
-Models defined in this module ends with 'Model'.
+Models are implemented as composite layers, too.
 
 Differences from the paper:
   - Weights initialization
@@ -20,69 +18,36 @@ from tensorflow.keras import layers
 from layers import *
 
 
-class DebuggingModel(tf.keras.Model):
+class Debugging(layers.Layer):
   '''\
   This model is only used during development.
+
+  Testing discriminator as a model (as a classifier).
+  Adding input, preprocessing, and output.
+
+  From a batch of input images, computes the vector of probabilities for the
+  binary classification task.
   '''
 
-  class ReduceLayer(layers.Layer):
+  def build(self, inputs_shape):
+    ''' Defines the net '''
 
-    def __init__(self):
-      layers.Layer.__init__(self, name='Reduce')
-
-    def call(self, inputs):
-      return tf.math.reduce_mean(inputs, axis=(1,2,3))
-  
-
-  def __init__(self, input_shape):
-    ''' Defines the net.  '''
-
-    tf.keras.Model.__init__(self, name='Debugging')
-
-    self._input_shape = input_shape
-
-    # Testing discriminator as a model (as a classifier).
-    # Adding input, preprocessing, and output
     self._layers_stack = [
-        ImagePreprocessing((256,256), input_shape=input_shape),
-        DiscriminatorModel(),
-        self.ReduceLayer(),
+        lambda x: ImagePreprocessing()(x, out_size=(256,256)),
+        Discriminator(),
+        ReduceMean(),
       ]
 
 
   def call(self, inputs):
-    ''' Forward pass '''
 
     # Sequential
-    out = inputs
     for layer in self._layers_stack:
-      out = layer(out)
-
-    return out
-
-
-  def compile_with_defaults(self, **kargs):
-    '''\
-    Compiles this keras model, with some suggested defaults.
-    
-    Args: Given args are forwarded to keras compile. Only keywords arguments
-      are supported.
-    '''
-
-    # Appropriate loss/metrics for this model
-    kargs.setdefault('loss', tf.losses.BinaryCrossentropy())
-    kargs.setdefault('metrics', [tf.keras.metrics.BinaryAccuracy()])
-
-    # Compile
-    tf.keras.Model.compile(self, **kargs)
+      inputs = layer(inputs)
+    return inputs
 
 
-  # TODO: not a correct configuration for a model
-  def get_config(self):
-    return { 'input_shape': self._input_shape }
-
-
-class DiscriminatorModel(tf.keras.Model):
+class Discriminator(layers.Layer):
   '''\
   Image discriminator in CycleGAN (PatchGAN).
   Each block is a 2d convolution, instance normalization, and LeakyReLU
@@ -90,23 +55,24 @@ class DiscriminatorModel(tf.keras.Model):
   halved. The final output is a (sigmoid) map of classifications for
   {true, false}. With a 256x256 image input, each pixel of the 16x16 output map
   has 70x70 receptive field.
-  '''
-  
-  def __init__(self, input_shape=(256,256,3)):
 
-    tf.keras.Model.__init__(self, name='Discriminator')
+  From a batch of input images, computes a vector of probabilities for the
+  binary classification task.
+  '''
+
+  def build(self, inputs_shape):
+    ''' Defines the net. '''
 
     # Parameters
     filters = 64
     Activation = lambda: layers.LeakyReLU(0.2)
-    self._input_shape = input_shape
 
-    layers_stack = []   # Layer stack
+    layers_stack = []
 
     # Input block
     layers_stack += [
         layers.Conv2D(filters=filters, kernel_size=4, strides=2,
-          padding='same', input_shape=input_shape),
+          padding='same'),
         Activation(),
       ]
 
@@ -130,17 +96,11 @@ class DiscriminatorModel(tf.keras.Model):
     # Store
     self._layers_stack = layers_stack
 
-
+  
   def call(self, inputs):
 
     # Sequential
-    out = inputs
     for layer in self._layers_stack:
-      out = layer(out)
-
-    return out
-
-
-  def get_config(self):
-    return { 'input_shape': self._input_shape }
+      inputs = layer(inputs)
+    return inputs
 
