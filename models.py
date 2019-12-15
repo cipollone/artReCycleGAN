@@ -18,7 +18,64 @@ from tensorflow.keras import layers
 from layers import *
 
 
-class Debugging(layers.Layer):
+def define_model(input_shape):
+  '''\
+  This method is used to select the model to use, so not to modify the main
+  training file.
+
+  Returns:
+    keras model. It has an additional member 'compile_defaults', for suggested
+      compile options.
+  '''
+
+  # Define
+  model_layer = Debugging()
+
+  # IO behaviour
+  inputs = tf.keras.Input(shape=input_shape)
+  outputs = model_layer(inputs)
+  keras_model = tf.keras.Model(inputs=inputs, outputs=outputs)
+
+  # Global model options
+  keras_model.compile_defaults = model_layer.compile_defaults
+
+  return keras_model
+
+
+class BaseLayer(layers.Layer):
+  '''\
+  Base class for layers of this module. These layers can also be used as global
+  models.  Subclasses can push layers to self.layers_stack to create a simple
+  sequential layer, otherwise they must override call(). self.compile_defaults
+  is a dictionary of default argument when one of these layers is used as a
+  model.
+  '''
+
+  def __init__(self, *args, **kargs):
+    layers.Layer.__init__(self, *args, **kargs)
+    self.layers_stack = []
+    self.compile_defaults = {}
+
+
+  def call(self, inputs):
+
+    # This must be overridden if layers_stack is not used
+    if len(self.layers_stack) == 0:
+      raise NotImplementedError(
+        'call() must be overridden if self.layers_stack is not used.')
+
+    # Sequential model by default
+    for layer in self.layers_stack:
+      inputs = layer(inputs)
+    return inputs
+
+
+  def get_config(self):
+    ''' Empty dict if fine if subclasses constructors accept no arguments '''
+    return {}
+
+
+class Debugging(BaseLayer):
   '''\
   This model is only used during development.
 
@@ -29,25 +86,26 @@ class Debugging(layers.Layer):
   binary classification task.
   '''
 
+  def __init__(self):
+    BaseLayer.__init__(self)
+
+    self.compile_defaults = {
+        'loss': tf.losses.BinaryCrossentropy(),
+        'metrics': [tf.keras.metrics.BinaryAccuracy()],
+      }
+
+
   def build(self, inputs_shape):
     ''' Defines the net '''
 
-    self._layers_stack = [
+    self.layers_stack = [
         lambda x: ImagePreprocessing()(x, out_size=(256,256)),
         Discriminator(),
         ReduceMean(),
       ]
 
 
-  def call(self, inputs):
-
-    # Sequential
-    for layer in self._layers_stack:
-      inputs = layer(inputs)
-    return inputs
-
-
-class Discriminator(layers.Layer):
+class Discriminator(BaseLayer):
   '''\
   Image discriminator in CycleGAN (PatchGAN).
   Each block is a 2d convolution, instance normalization, and LeakyReLU
@@ -67,10 +125,8 @@ class Discriminator(layers.Layer):
     filters = 64
     Activation = lambda: layers.LeakyReLU(0.2)
 
-    layers_stack = []
-
     # Input block
-    layers_stack += [
+    self.layers_stack += [
         layers.Conv2D(filters=filters, kernel_size=4, strides=2,
           padding='same'),
         Activation(),
@@ -80,7 +136,7 @@ class Discriminator(layers.Layer):
     for i in range(3):
 
       filters *= 2
-      layers_stack += [
+      self.layers_stack += [
           layers.Conv2D(filters=filters, kernel_size=4, strides=2,
             padding='same'),
           InstanceNormalization(),
@@ -88,19 +144,8 @@ class Discriminator(layers.Layer):
         ]
 
     # Output block
-    layers_stack += [
+    self.layers_stack += [
         layers.Conv2D(filters=1, kernel_size=4, strides=1, padding='same'),
         tf.keras.activations.sigmoid,
       ] # TODO: remove sigmoid here and add in loss. What about metric?
-
-    # Store
-    self._layers_stack = layers_stack
-
-  
-  def call(self, inputs):
-
-    # Sequential
-    for layer in self._layers_stack:
-      inputs = layer(inputs)
-    return inputs
 

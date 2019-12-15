@@ -39,8 +39,8 @@ class CountersSaverCallback(tf.keras.callbacks.Callback):
     self.step += 1
  
 
-  def on_epoch_begin(self, epoch, logs=None):
-    self.epoch = epoch
+  def on_epoch_end(self, epoch, logs=None):
+    self.epoch += 1
     self._update_log()
 
   def _update_log(self):

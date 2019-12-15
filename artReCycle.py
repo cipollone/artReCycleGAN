@@ -87,36 +87,28 @@ def train(args):
   test_dataset, test_size = data.load('classes', 'test',
       shape=input_shape, batch=args.batch)
 
-  # If new training (not resuming)
-  if not args.cont:
+  # Define keras model
+  keras_model = models.define_model(input_shape)
 
-    # Define keras model
-    inputs = tf.keras.Input(shape=input_shape)
-    outputs = models.Debugging()(inputs)
-    keras_model = tf.keras.Model(inputs=inputs, outputs=outputs)
+  # Save keras model
+  keras_json = keras_model.to_json()
+  keras_json = json.dumps(json.loads(keras_json), indent=2)
+  with open(model_json, 'w') as f:
+    f.write(keras_json)
 
-    # Save keras graph
-    graph_json = keras_model.to_json()
-    graph_json = json.dumps(json.loads(graph_json), indent=2)
-    with open(model_json, 'w') as f:
-      f.write(graph_json)
+  # Compile options
+  options = keras_model.compile_defaults
+  options.update({
+      'optimizer': tf.keras.optimizers.Adam(learning_rate=args.rate),
+    })
 
-    # Create tensorflow graph
-    keras_model.compile(
-        optimizer = tf.keras.optimizers.Adam(learning_rate=args.rate),
-        loss = tf.losses.BinaryCrossentropy(),
-        metrics = [tf.keras.metrics.BinaryAccuracy()],
-      )
+  # Create tensorflow graph
+  keras_model.compile(**options)
 
-  # If resuming
-  else:
-
-    # Reload keras model
-    with open(model_json) as f:
-      graph_json = f.read()
-    keras_model = tf.keras.models.model_from_json(graph_json)
-
-    # TODO: recompile + weights?
+  # Resuming
+  if args.cont:
+    keras_model.load_weights(model_checkpoint)
+    print('> Weights loaded')
 
   # Training settings
   steps_per_epoch = int(train_size/args.batch) \
@@ -148,11 +140,9 @@ def train(args):
       epochs = args.epochs,
       steps_per_epoch = steps_per_epoch,
       callbacks = callbacks,
-      initial_epoch = epoch
+      initial_epoch = epoch,
+      shuffle = False,
     )
-
-  # Evaluate
-  keras_model.evaluate(test_dataset)
 
 
 def use(args):
