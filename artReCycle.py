@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 
 '''\
-Main script file. Implementation of CycleGAN paper with Tensorflow 2.0.
+Main script file. Implementation of CycleGAN paper.
+Tested with Tensorflow 2.1rc0.
 '''
 
 import os
@@ -11,7 +12,7 @@ import json
 import tensorflow as tf
 
 import data
-import model
+import models
 from customizations import *
 
 
@@ -76,39 +77,37 @@ def train(args):
   model_path, log_path, logs_path = _prepare_directories(
       model_name, resume=args.cont)
 
+  model_json = os.path.join(model_path, 'keras.json')
+  model_checkpoint = os.path.join(model_path, 'model')
+
   # Define datasets
-  input_shape = (256, 256, 3)
+  input_shape = (300, 300, 3)
   train_dataset, train_size = data.load('classes', 'train',
       shape=input_shape, batch=args.batch)
   test_dataset, test_size = data.load('classes', 'test',
       shape=input_shape, batch=args.batch)
 
-  # If new training (not resuming)
-  if not args.cont:
+  # Define keras model
+  keras_model, compile_options = models.define_model(input_shape)
 
-    # Define keras model (classification task for now)
-    keras_model = model.classifier(
-        input_shape = input_shape,
-        num_classes = len(data.datasets)
-      )
+  # Save keras model
+  keras_json = keras_model.to_json()
+  keras_json = json.dumps(json.loads(keras_json), indent=2)
+  with open(model_json, 'w') as f:
+    f.write(keras_json)
 
-    # Save keras graph
-    graph_json = keras_model.to_json()
-    graph_json = json.dumps(json.loads(graph_json), indent=2)
-    with open(os.path.join(model_path,'keras.json'), 'w') as f:
-      f.write(graph_json)
+  # Compile options
+  compile_options.update({
+      'optimizer': tf.keras.optimizers.Adam(learning_rate=args.rate),
+    })
 
-    # Create tensorflow graph
-    keras_model.compile(
-        optimizer = tf.keras.optimizers.Adam(learning_rate=args.rate),
-        loss = tf.losses.CategoricalCrossentropy(),
-        metrics = [tf.keras.metrics.CategoricalAccuracy()]
-      )
+  # Create tensorflow graph
+  keras_model.compile(**compile_options)
 
-  # If resuming
-  else:
-    # Load model
-    keras_model = tf.keras.models.load_model(model_path)
+  # Resuming
+  if args.cont:
+    keras_model.load_weights(model_checkpoint)
+    print('> Weights loaded')
 
   # Training settings
   steps_per_epoch = int(train_size/args.batch) \
@@ -122,8 +121,8 @@ def train(args):
   # Callbacks
   callbacks = [
       tf.keras.callbacks.ModelCheckpoint(
-        filepath = model_path, monitor = 'loss', save_best_only = True,
-        mode = 'max', save_freq = 'epoch', save_weights_only = False
+        filepath = model_checkpoint, monitor = 'loss', save_best_only = True,
+        mode = 'max', save_freq = 'epoch', save_weights_only = True
       ),
       TensorBoardWithStep(
         initial_step = step,
@@ -140,11 +139,9 @@ def train(args):
       epochs = args.epochs,
       steps_per_epoch = steps_per_epoch,
       callbacks = callbacks,
-      initial_epoch = epoch
+      initial_epoch = epoch,
+      shuffle = False,
     )
-
-  # Evaluate
-  keras_model.evaluate(test_dataset)
 
 
 def use(args):
@@ -166,19 +163,24 @@ def debug(args):
     args: namespace of arguments. Run --help for info.
   '''
   import matplotlib.pyplot as plt
-  import code
+  import layers
 
   print('> Debug')
 
-  # Testing the input pipeline
-  dataset, _ = data.load('caravaggio', 'test', batch=4)
-  preprocessing = model.ImagePreprocessing(out_size=(256,256,3))
+  # Testing the new classification dataset
+  dataset, size = data.load('classes', 'test', batch=2)
 
-  print(dataset)
-  for batch in dataset:
-    images = preprocessing(batch)
-    print('New batch')
-    for img in images:
+  # Testing preprocessing layer
+  preprocessing = layers.ImagePreprocessing(out_size=(256,256))
+
+  # Show
+  print(dataset, size)
+  for images, labels in dataset:
+    processed_images = preprocessing(images)
+    for img, processed_img, label in zip(images, processed_images, labels):
+      print('min', tf.math.reduce_min(processed_img), 'max',
+          tf.math.reduce_max(processed_img))
+      print('label: ',label, flush=True)
       plt.imshow(tf.cast(img, dtype=tf.uint8))
       plt.show()
       input()
@@ -214,8 +216,8 @@ def main():
       help='Learning rate')
   train_parser.add_argument('-e', '--epochs', type=int, default=epochs,
       help='Number of epochs to train')
-  train_parser.add_argument('--epoch_steps', type=int, default=None,
-      help='Number of steps in each epoch')
+  train_parser.add_argument('-s', '--epoch_steps', type=int, default=None,
+      help='Force a specific number of steps in each epoch')
   train_parser.add_argument('-l', '--logs', type=int, default=log_frequency,
       help='Save logs after this number of batches')
   train_parser.add_argument('-c', '--continue', action='store_true', dest='cont',
