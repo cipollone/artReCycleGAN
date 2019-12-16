@@ -88,7 +88,7 @@ def train(args):
       shape=input_shape, batch=args.batch)
 
   # Define keras model
-  keras_model = models.define_model(input_shape)
+  keras_model, compile_options = models.define_model(input_shape)
 
   # Save keras model
   keras_json = keras_model.to_json()
@@ -97,13 +97,12 @@ def train(args):
     f.write(keras_json)
 
   # Compile options
-  options = keras_model.compile_defaults
-  options.update({
+  compile_options.update({
       'optimizer': tf.keras.optimizers.Adam(learning_rate=args.rate),
     })
 
   # Create tensorflow graph
-  keras_model.compile(**options)
+  keras_model.compile(**compile_options)
 
   # Resuming
   if args.cont:

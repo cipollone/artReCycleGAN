@@ -11,6 +11,9 @@ Differences from the paper:
     strange.
   - Using a fixed normalization for images in ImagePreprocessing.
 '''
+# note: don't assign new properties to model: autograph interprets these as
+# layers. Be careful with name clashes with superclasses, such as _layers.
+
 
 import tensorflow as tf
 from tensorflow.keras import layers
@@ -24,8 +27,7 @@ def define_model(input_shape):
   training file.
 
   Returns:
-    keras model. It has an additional member 'compile_defaults', for suggested
-      compile options.
+    keras model, and a dictionary of default options for compile().
   '''
 
   # Define
@@ -34,21 +36,17 @@ def define_model(input_shape):
   # IO behaviour
   inputs = tf.keras.Input(shape=input_shape)
   outputs = model_layer(inputs)
-  keras_model = tf.keras.Model(inputs=inputs, outputs=outputs)
+  keras_model = tf.keras.Model(inputs=inputs, outputs=outputs, name='Model')
 
-  # Global model options
-  keras_model.compile_defaults = model_layer.compile_defaults
-
-  return keras_model
+  return keras_model, model_layer.compile_defaults
 
 
 class BaseLayer(layers.Layer):
   '''\
-  Base class for layers of this module. These layers can also be used as global
-  models.  Subclasses can push layers to self.layers_stack to create a simple
-  sequential layer, otherwise they must override call(). self.compile_defaults
-  is a dictionary of default argument when one of these layers is used as a
-  model.
+  Base class for layers of this module. Subclasses can push layers to
+  self.layers_stack to create a simple sequential layer, otherwise they must
+  override call(). self.compile_defaults is a dictionary of default argument
+  when one of these layers is used as a model.
   '''
 
   def __init__(self, *args, **kargs):
@@ -90,19 +88,36 @@ class Debugging(BaseLayer):
     BaseLayer.__init__(self)
 
     self.compile_defaults = {
-        'loss': tf.losses.BinaryCrossentropy(),
-        'metrics': [tf.keras.metrics.BinaryAccuracy()],
+        'loss': tf.losses.BinaryCrossentropy(from_logits=True),
+        'metrics': [BinaryAccuracyFromLogits()],
       }
 
 
   def build(self, inputs_shape):
     ''' Defines the net '''
 
-    self.layers_stack = [
-        lambda x: ImagePreprocessing()(x, out_size=(256,256)),
-        Discriminator(),
-        ReduceMean(),
-      ]
+    self._layers_defs = {}
+
+    preprocessing = ImagePreprocessing()
+    self._layers_defs['pre'] = lambda x: preprocessing(x, out_size=(256,256))
+    self._layers_defs['net'] = Discriminator()
+    self._layers_defs['mean'] = ReduceMean()
+
+    # Built
+    BaseLayer.build(self, inputs_shape)
+
+
+  def call(self, inputs):
+
+    # Model
+    inputs = self._layers_defs['pre'](inputs)
+    inputs = self._layers_defs['net'](inputs)
+    inputs = self._layers_defs['mean'](inputs)
+
+    # Outputs
+    inputs = tf.identity(inputs, name='logits')
+
+    return inputs
 
 
 class Discriminator(BaseLayer):
@@ -114,8 +129,8 @@ class Discriminator(BaseLayer):
   {true, false}. With a 256x256 image input, each pixel of the 16x16 output map
   has 70x70 receptive field.
 
-  From a batch of input images, computes a vector of probabilities for the
-  binary classification task.
+  From a batch of input images, returns scalar logits for binary
+  classification.
   '''
 
   def build(self, inputs_shape):
@@ -146,6 +161,9 @@ class Discriminator(BaseLayer):
     # Output block
     self.layers_stack += [
         layers.Conv2D(filters=1, kernel_size=4, strides=1, padding='same'),
-        tf.keras.activations.sigmoid,
-      ] # TODO: remove sigmoid here and add in loss. What about metric?
+        lambda x: tf.identity(x, name='logits'),
+      ]
+
+    # Built
+    BaseLayer.build(self, inputs_shape)
 

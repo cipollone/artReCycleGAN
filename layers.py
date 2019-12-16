@@ -4,6 +4,7 @@ Custom keras layers that are used in the model.
 
 import tensorflow as tf
 from tensorflow.keras import layers
+from tensorflow.keras import losses
 
 
 def _make_layer(name, function):
@@ -26,14 +27,18 @@ def _make_layer(name, function):
     def __init__(self, **kargs):
 
       # Choose a name
-      layer_name = name
-      if GenericLayer.count:
-        layer_name = layer_name + '_' + str(GenericLayer.count)
-      GenericLayer.count += 1
+      layer_name = kargs.get('name', None)
+      if not layer_name:
+
+        layer_name = name
+        if GenericLayer.count:
+          layer_name = layer_name + '_' + str(GenericLayer.count)
+        GenericLayer.count += 1
+        kargs['name'] = layer_name
 
       # Set
       self._function = function
-      layers.Layer.__init__(self, name=layer_name, **kargs)
+      layers.Layer.__init__(self, **kargs)
 
 
     def call(self, inputs, *, training, **kargs):
@@ -156,4 +161,35 @@ def reduce_mean(inputs):
   '''
 
   return tf.math.reduce_mean(inputs, axis=(1,2,3))
+
+
+class BinaryAccuracyFromLogits(tf.keras.metrics.Metric):
+  '''\
+  Just line BinaryAccuracy, but when the output of the model is in logits.
+  '''
+
+  def __init__(self, **kwargs):
+
+    # Name
+    layer_name = kwargs.get('name', None)
+    if not layer_name:
+      kwargs['name'] = 'BinaryAccuracy'
+
+    # Internal metric and super
+    self._inner_metric = tf.keras.metrics.BinaryAccuracy()
+    tf.keras.metrics.Metric.__init__(self, **kwargs)
+
+
+  def update_state(self, y_true, y_pred, sample_weight=None):
+
+    # Transform
+    logits = y_pred
+    probabilities = tf.keras.activations.sigmoid(logits)
+
+    # Forward
+    self._inner_metric.update_state(y_true, probabilities, sample_weight)
+
+
+  def result(self):
+    return self._inner_metric.result()
 
