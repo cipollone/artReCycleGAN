@@ -9,7 +9,7 @@ Differences from the paper:
     layer before the last.
   - In their implementation there's no affine transformation, but this seems
     strange.
-  - Using a fixed normalization for images in ImagePreprocessing.
+  - Trying affine transformation in ImagePreprocessing.
 '''
 # note: don't assign new properties to model: autograph interprets these as
 # layers. Be careful with name clashes with superclasses, such as _layers.
@@ -69,8 +69,11 @@ class BaseLayer(layers.Layer):
 
 
   def get_config(self):
-    ''' Empty dict if fine if subclasses constructors accept no arguments '''
-    return {}
+    ''' Empty dict is fine if subclasses constructors accept no arguments '''
+
+    config = layers.Layer.get_config(self)
+    config.update({})
+    return config
 
 
 class Debugging(BaseLayer):
@@ -154,7 +157,7 @@ class Discriminator(BaseLayer):
       self.layers_stack += [
           layers.Conv2D(filters=filters, kernel_size=4, strides=2,
             padding='same'),
-          InstanceNormalization(),
+          InstanceNormalization(affine=True),
           Activation(),
         ]
 

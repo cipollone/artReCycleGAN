@@ -83,26 +83,59 @@ def layerize(name, scope):
   return decorator
 
 
-@layerize('InstanceNormalization', globals())
-def instance_normalization(inputs):
+class InstanceNormalization(layers.Layer):
   '''\
   Instance normalization substitutes Batch normalization in CycleGan paper.
   From their original implementation, I see that the affine transformation
-  is not included.
-
-  Args:
-    inputs: a batch of 3d tesors (4d input)
-  Returns:
-    A batch of 3d tensors
+  is not included, but I leave an option here.
   '''
 
-  eps = 1e-4
+  def __init__(self, affine=False, **kwargs):
+    '''\
+    If affine is true, each channel is transformed with a scalar affine
+    transformation (adding scale and offset parameters).
+    '''
 
-  # Normalize in image width height dimensions
-  mean, var = tf.nn.moments(inputs, axes=[1,2], keepdims=True)
-  inputs = (inputs - mean) / tf.sqrt(var + eps)
+    layers.Layer.__init__(self, **kwargs)
+    self.affine = affine
 
-  return inputs
+
+  def build(self, input_shape):
+
+    if self.affine:
+      scalars_shape = [1, 1, 1, input_shape[3]]
+      self.scale = self.add_weight(shape = scalars_shape, name='scale')
+      self.offset = self.add_weight(shape = scalars_shape, name='offset')
+
+    layers.Layer.build(self, input_shape)
+
+
+  def call(self, inputs):
+    '''\
+    Args:
+      inputs: a batch of 3d tesors (4d input)
+    Returns:
+      A batch of 3d tensors
+    '''
+
+    eps = 1e-4
+
+    # Normalize in image width height dimensions
+    mean, var = tf.nn.moments(inputs, axes=[1,2], keepdims=True)
+    inputs = (inputs - mean) / tf.sqrt(var + eps)
+
+    # Affine transformation
+    if self.affine:
+      inputs = self.scale * inputs + self.offset
+
+    return inputs
+
+
+  def get_config(self):
+
+    config = layers.Layer.get_config(self)
+    config.update({ 'affine': self.affine })
+    return config
 
 
 @layerize('ImagePreprocessing', globals())
