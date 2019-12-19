@@ -1,7 +1,6 @@
 '''\
 Custom keras layers that are used in the model.
 '''
-# TODO: show padding effect in tensorboard
 # TODO: resnet block
 # TODO: tensorboard again
 
@@ -11,12 +10,73 @@ from tensorflow.keras import losses
 import inspect
 
 
+class BaseLayer(layers.Layer):
+  '''\
+  Base class for all layers and model parts.
+  This is mainly used to create namespaces in TensorBoard graphs.
+  This must be subclassed, not instantiated directly. Subclasses can push
+  layers to self.layers_stack to create a simple sequential layer, otherwise
+  they must override call(). self.compile_defaults is a dictionary of default
+  argument when one of these layers is used as a model.
+  '''
+
+  # Number all layers. Map classes to count
+  layers_count = {}
+
+  def __init__(self, **kwargs):
+
+    # Only from subclasses
+    this_class = self.__class__
+    if this_class is BaseLayer:
+      raise NotImplementedError('BaseLayer is an abstract class')
+
+    # Add this layer to count
+    if not this_class in BaseLayer.layers_count:
+      BaseLayer.layers_count[this_class] = 0
+    else:
+      BaseLayer.layers_count[this_class] += 1
+
+    # Choose a name
+    if not 'name' in kwargs:
+      name = this_class.__name__
+      if BaseLayer.layers_count[this_class] > 0:
+        name += '_' + str(BaseLayer.layers_count[this_class])
+      kwargs['name'] = name
+
+    # Empty layers and compile options
+    self.layers_stack = []
+    self.compile_defaults = {}
+
+    # Super
+    layers.Layer.__init__(self, **kwargs)
+
+
+  def call(self, inputs):
+    ''' Sequential layer by default. '''
+
+    # This must be overridden if layers_stack is not used
+    if not self.layers_stack:
+      raise NotImplementedError(
+        'call() must be overridden if self.layers_stack is not used.')
+
+    # Sequential model by default
+    for layer in self.layers_stack:
+      inputs = layer(inputs)
+    return inputs
+
+
+  def get_config(self):
+    ''' Empty dict is fine if subclasses constructors accept no arguments '''
+
+    return layers.Layer.get_config(self)
+
+
 def _make_layer(name, function):
   '''\
   Creates a keras layer that calls the given function.
-  The first argument of the function must be for the inputs, and the other
-  optional parameters are for options. If the returned Layer is initialized
-  with arguments for 'function', they will be used at each call.
+  The first argument of the function must be for the inputs, and other options
+  may follow. If created Layer class is initialized with arguments for
+  'function', they will be used at each call.
 
   Args:
     name: the name of this layer
@@ -25,10 +85,8 @@ def _make_layer(name, function):
     a keras layer that calls function
   '''
 
-  class Wrapper(layers.Layer):
+  class Wrapper(BaseLayer):
     ''' Layer class wrapper '''
-
-    count = 0
 
     def __init__(self, **kwargs):
 
@@ -38,25 +96,18 @@ def _make_layer(name, function):
       # Set the argument defaults
       signature = inspect.signature(function)
       arg_names = list(signature.parameters)
-      function_kwargs = { arg: kwargs[arg] for arg in kwargs if arg in arg_names }
-      layer_kwargs = { arg: kwargs[arg] for arg in kwargs if not arg in arg_names}
+      function_kwargs = { arg: kwargs[arg] \
+          for arg in kwargs if arg in arg_names }
+      layer_kwargs = { arg: kwargs[arg] \
+          for arg in kwargs if not arg in arg_names}
       self._function_bound_args = signature.bind_partial(**function_kwargs)
 
-      # Choose a name for the layer
-      layer_name = layer_kwargs.get('name', None)
-      if not layer_name:
-
-        layer_name = name
-        if Wrapper.count:
-          layer_name = layer_name + '_' + str(Wrapper.count)
-        Wrapper.count += 1
-        layer_kwargs['name'] = layer_name
-
       # Super
-      layers.Layer.__init__(self, **layer_kwargs)
+      BaseLayer.__init__(self, **layer_kwargs)
 
 
     def call(self, inputs, **kwargs):
+
       defaults = self._function_bound_args.arguments
       kwargs.pop('training', None)
       return self._function(inputs, **defaults, **kwargs)
@@ -99,7 +150,7 @@ def layerize(name, scope):
   return decorator
 
 
-class InstanceNormalization(layers.Layer):
+class InstanceNormalization(BaseLayer):
   '''\
   Instance normalization substitutes Batch normalization in CycleGan paper.
   From their original implementation, I see that the affine transformation
@@ -112,7 +163,7 @@ class InstanceNormalization(layers.Layer):
     transformation (adding scale and offset parameters).
     '''
 
-    layers.Layer.__init__(self, **kwargs)
+    BaseLayer.__init__(self, **kwargs)
     self.affine = affine
 
 
@@ -123,7 +174,7 @@ class InstanceNormalization(layers.Layer):
       self.scale = self.add_weight(shape = scalars_shape, name='scale')
       self.offset = self.add_weight(shape = scalars_shape, name='offset')
 
-    layers.Layer.build(self, input_shape)
+    BaseLayer.build(self, input_shape)
 
 
   def call(self, inputs):
@@ -149,7 +200,7 @@ class InstanceNormalization(layers.Layer):
 
   def get_config(self):
 
-    config = layers.Layer.get_config(self)
+    config = BaseLayer.get_config(self)
     config.update({ 'affine': self.affine })
     return config
 

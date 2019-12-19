@@ -101,7 +101,7 @@ def train(args):
       'optimizer': tf.keras.optimizers.Adam(learning_rate=args.rate),
     })
 
-  # Create tensorflow graph
+  # Compile for loss, metrics etc
   keras_model.compile(**compile_options)
 
   # Resuming
@@ -163,27 +163,18 @@ def debug(args):
     args: namespace of arguments. Run --help for info.
   '''
   import matplotlib.pyplot as plt
-  import layers
 
   print('> Debug')
 
-  # Testing the new classification dataset
-  dataset, size = data.load('classes', 'test', batch=2)
+  # Saving the Tensorboard grpah without training
 
-  # Testing preprocessing layer
-  preprocessing = layers.ImagePreprocessing(out_size=(256,256))
+  # Model
+  input_shape = (300, 300, 3)
+  keras_model, compile_options = models.define_model(input_shape)
 
-  # Show
-  print(dataset, size)
-  for images, labels in dataset:
-    processed_images = preprocessing(images)
-    for img, processed_img, label in zip(images, processed_images, labels):
-      print('min', tf.math.reduce_min(processed_img), 'max',
-          tf.math.reduce_max(processed_img))
-      print('label: ',label, flush=True)
-      plt.imshow(tf.cast(img, dtype=tf.uint8))
-      plt.show()
-      input()
+  # TensorBoard callback writer
+  tbCallback = tf.keras.callbacks.TensorBoard('debug', write_graph=True)
+  tbCallback.set_model(keras_model)
 
 
 def main():

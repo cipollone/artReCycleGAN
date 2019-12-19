@@ -38,41 +38,6 @@ def define_model(input_shape):
   return keras_model, model_layer.compile_defaults
 
 
-class BaseLayer(layers.Layer):
-  '''\
-  Base class for layers of this module. Subclasses can push layers to
-  self.layers_stack to create a simple sequential layer, otherwise they must
-  override call(). self.compile_defaults is a dictionary of default argument
-  when one of these layers is used as a model.
-  '''
-
-  def __init__(self, *args, **kargs):
-    layers.Layer.__init__(self, *args, **kargs)
-    self.layers_stack = []
-    self.compile_defaults = {}
-
-
-  def call(self, inputs):
-
-    # This must be overridden if layers_stack is not used
-    if len(self.layers_stack) == 0:
-      raise NotImplementedError(
-        'call() must be overridden if self.layers_stack is not used.')
-
-    # Sequential model by default
-    for layer in self.layers_stack:
-      inputs = layer(inputs)
-    return inputs
-
-
-  def get_config(self):
-    ''' Empty dict is fine if subclasses constructors accept no arguments '''
-
-    config = layers.Layer.get_config(self)
-    config.update({})
-    return config
-
-
 class Debugging(BaseLayer):
   '''\
   This model is only used during development.
@@ -96,11 +61,13 @@ class Debugging(BaseLayer):
   def build(self, inputs_shape):
     ''' Defines the net '''
 
-    self._layers_defs = {}
+    # Def
+    self.layers_stack = [
 
-    self._layers_defs['pre'] = ImagePreprocessing(out_size=(256,256))
-    self._layers_defs['net'] = Discriminator()
-    self._layers_defs['mean'] = ReduceMean()
+        ImagePreprocessing(out_size=(256,256)),
+        Discriminator(),
+        ReduceMean(),
+      ]
 
     # Built
     BaseLayer.build(self, inputs_shape)
@@ -108,12 +75,7 @@ class Debugging(BaseLayer):
 
   def call(self, inputs):
 
-    # Model
-    inputs = self._layers_defs['pre'](inputs)
-    inputs = self._layers_defs['net'](inputs)
-    inputs = self._layers_defs['mean'](inputs)
-
-    # Outputs
+    inputs = BaseLayer.call(self, inputs)
     inputs = tf.identity(inputs, name='logits')
 
     return inputs
