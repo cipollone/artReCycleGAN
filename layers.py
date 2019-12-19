@@ -12,14 +12,18 @@ class BaseLayer(layers.Layer):
   '''\
   Base class for all layers and model parts.
   This is mainly used to create namespaces in TensorBoard graphs.
-  This must be subclassed, not instantiated directly. Subclasses can push
-  layers to self.layers_stack to create a simple sequential layer, otherwise
-  they must override call(). self.compile_defaults is a dictionary of default
-  argument when one of these layers is used as a model.
+  This must be subclassed, not instantiated directly.
+  Three members can be used by subclasses:
+    - self.layers_stack is a list of inner computations. Sequential layers
+      can simply push to this list without defining call().
+    - self.layer_options can be filled with subclasses' constructor arguments,
+      without the need of defining get_config().
+    - self.compile_defaults is a dict of compile options, useful when this
+      layer is used as the outer block in a keras model.
   '''
 
   # Number all layers. Map classes to count
-  layers_count = {}
+  _layers_count = {}
 
   def __init__(self, **kwargs):
 
@@ -29,21 +33,27 @@ class BaseLayer(layers.Layer):
       raise NotImplementedError('BaseLayer is an abstract class')
 
     # Add this layer to count
-    if not this_class in BaseLayer.layers_count:
-      BaseLayer.layers_count[this_class] = 0
+    if not this_class in BaseLayer._layers_count:
+      BaseLayer._layers_count[this_class] = 0
     else:
-      BaseLayer.layers_count[this_class] += 1
+      BaseLayer._layers_count[this_class] += 1
 
     # Choose a name
     if not 'name' in kwargs:
       name = this_class.__name__
-      if BaseLayer.layers_count[this_class] > 0:
-        name += '_' + str(BaseLayer.layers_count[this_class])
+      if BaseLayer._layers_count[this_class] > 0:
+        name += '_' + str(BaseLayer._layers_count[this_class])
       kwargs['name'] = name
 
-    # Empty layers and compile options
-    self.layers_stack = []
-    self.compile_defaults = {}
+    # Initializations
+    defaults = {
+        'layers_stack': [],        # Empty layer list
+        'layer_options': {},       # No options
+        'compile_defaults': {},    # No compilation options
+      }
+    for key in defaults:
+      if not hasattr(self, key):
+        setattr(self, key, defaults[key])
 
     # Super
     layers.Layer.__init__(self, **kwargs)
@@ -64,9 +74,11 @@ class BaseLayer(layers.Layer):
 
 
   def get_config(self):
-    ''' Empty dict is fine if subclasses constructors accept no arguments '''
+    ''' Subclasses should use layer_options, or override '''
 
-    return layers.Layer.get_config(self)
+    config = layers.Layer.get_config(self)
+    config.update( self.layer_options )
+    return config
 
 
 def _make_layer(name, function):
@@ -159,17 +171,23 @@ class InstanceNormalization(BaseLayer):
     transformation (adding scale and offset parameters).
     '''
 
+    # Super
     BaseLayer.__init__(self, **kwargs)
-    self.affine = affine
+
+    # Store
+    self.layer_options = {
+        'affine': affine,
+      }
 
 
   def build(self, input_shape):
 
-    if self.affine:
+    if self.layer_options['affine']:
       scalars_shape = [1, 1, 1, input_shape[3]]
       self.scale = self.add_weight(shape = scalars_shape, name='scale')
       self.offset = self.add_weight(shape = scalars_shape, name='offset')
 
+    # Built
     BaseLayer.build(self, input_shape)
 
 
@@ -188,17 +206,10 @@ class InstanceNormalization(BaseLayer):
     inputs = (inputs - mean) / tf.sqrt(var + eps)
 
     # Affine transformation
-    if self.affine:
+    if self.layer_options['affine']:
       inputs = self.scale * inputs + self.offset
 
     return inputs
-
-
-  def get_config(self):
-
-    config = BaseLayer.get_config(self)
-    config.update({ 'affine': self.affine })
-    return config
 
 
 class GeneralConvBlock(BaseLayer):
@@ -220,17 +231,17 @@ class GeneralConvBlock(BaseLayer):
       pad: if given, a reflection padding of 'pad' values is added before
         convolution.
     '''
+    
+    # Super
+    BaseLayer.__init__(self, **kwargs)
 
     # Save options
-    self.block_options = {
+    self.layer_options = {
         'filters': filters,
         'kernel_size': kernel_size,
         'stride': stride,
         'pad': pad,
       }
-    
-    # Super
-    BaseLayer.__init__(self, **kwargs)
 
 
   def build(self, input_shape):
@@ -238,8 +249,8 @@ class GeneralConvBlock(BaseLayer):
 
     # Vars
     stack = []
-    filters, kernel_size, stride, pad = [ self.block_options[opt] for opt in \
-        ('filters', 'kernel_size', 'stride', 'pad') ]
+    filters, kernel_size, stride, pad = [ self.layer_options[opt] \
+        for opt in ('filters', 'kernel_size', 'stride', 'pad') ]
 
     # Padding
     if pad:
@@ -262,11 +273,21 @@ class GeneralConvBlock(BaseLayer):
     BaseLayer.build(self, input_shape)
 
 
-  def get_config(self):
+class ResNetBlock(BaseLayer):
+  '''\
+  In CycleGAN, a residual block is composed of:
+  padding, convolution block, padding, convolution bloc, input sum.
+  '''
 
-    config = BaseLayer.get_config(self)
-    config.update( self.block_options )
-    return config
+  def __init__(self, filters, **kwargs):
+    '''\
+    Args:
+      filters: number of filters (output channels) in both convolutions.
+    '''
+
+    self.layer_options = {
+        'filters': filters,
+      }
 
 
 @layerize('ImagePreprocessing', globals())

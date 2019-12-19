@@ -28,7 +28,7 @@ def define_model(input_shape):
   '''
 
   # Define
-  model_layer = Debugging()
+  model_layer = Generator()
 
   # IO behaviour
   inputs = tf.keras.Input(shape=input_shape)
@@ -41,44 +41,23 @@ def define_model(input_shape):
 class Debugging(BaseLayer):
   '''\
   This model is only used during development.
-
-  Testing discriminator as a model (as a classifier).
-  Adding input, preprocessing, and output.
-
-  From a batch of input images, computes the vector of probabilities for the
-  binary classification task.
   '''
 
-  def __init__(self):
-    BaseLayer.__init__(self)
 
-    self.compile_defaults = {
-        'loss': tf.losses.BinaryCrossentropy(from_logits=True),
-        'metrics': [BinaryAccuracyFromLogits()],
-      }
-
-
-  def build(self, inputs_shape):
+  def build(self, input_shape):
     ''' Defines the net '''
 
     # Def
     self.layers_stack = [
 
         ImagePreprocessing(out_size=(256,256)),
-        Discriminator(),
+        GeneralConvBlock(10, 7, 1, 3),
+        GeneralConvBlock(20, 5, 2),
         ReduceMean(),
       ]
 
-    # Built
-    BaseLayer.build(self, inputs_shape)
-
-
-  def call(self, inputs):
-
-    inputs = BaseLayer.call(self, inputs)
-    inputs = tf.identity(inputs, name='logits')
-
-    return inputs
+    # Super
+    BaseLayer.build(self, input_shape)
 
 
 class Discriminator(BaseLayer):
@@ -94,7 +73,7 @@ class Discriminator(BaseLayer):
   classification.
   '''
 
-  def build(self, inputs_shape):
+  def build(self, input_shape):
     ''' Defines the net. '''
 
     # Parameters
@@ -126,5 +105,48 @@ class Discriminator(BaseLayer):
       ]
 
     # Built
-    BaseLayer.build(self, inputs_shape)
+    BaseLayer.build(self, input_shape)
+
+
+class Generator(BaseLayer):
+  '''\
+  Image generator in CycleGAN. Transforms images from one domain to another.
+  The generator is composed of three parts: encoding, transformation,
+  deconding, which are respectively based on convolutional, resnet, and
+  convolutional transpose blocks. See paper for a more precise description.
+  '''
+
+  class Encoding(BaseLayer):
+    ''' Encoding phase of the generator '''
+
+    def build(self, input_shape):
+
+      # Def
+      self.layers_stack = [
+
+          GeneralConvBlock( filters=64, kernel_size=7, stride=1, pad=3 ),
+          GeneralConvBlock( filters=128, kernel_size=3, stride=2 ),
+          GeneralConvBlock( filters=256, kernel_size=3, stride=2 ),
+        ]
+
+      # Super
+      BaseLayer.build(self, input_shape)
+
+
+  class Transformation(BaseLayer):
+    ''' Transformation phase of the generator '''
+
+
+
+  def build(self, input_shape):
+    ''' Defines the net '''
+
+    # Def
+    self.layers_stack = [
+
+        Generator.Encoding(),
+      ]
+
+    # Super
+    BaseLayer.build(self, input_shape)
 
