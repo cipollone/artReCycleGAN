@@ -1,8 +1,6 @@
 '''\
 Custom keras layers that are used in the model.
 '''
-# TODO: resnet block
-# TODO: tensorboard again
 
 import tensorflow as tf
 from tensorflow.keras import layers
@@ -85,37 +83,35 @@ def _make_layer(name, function):
     a keras layer that calls function
   '''
 
-  class Wrapper(BaseLayer):
-    ''' Layer class wrapper '''
+  def __init__(self, **kwargs):
+    ''' Layer constructor '''
 
-    def __init__(self, **kwargs):
+    # Store the inner function
+    self._function = function
 
-      # Store the inner function
-      self._function = function
+    # Set the argument defaults
+    signature = inspect.signature(function)
+    arg_names = list(signature.parameters)
+    function_kwargs = { arg: kwargs[arg] \
+        for arg in kwargs if arg in arg_names }
+    layer_kwargs = { arg: kwargs[arg] \
+        for arg in kwargs if not arg in arg_names}
+    self._function_bound_args = signature.bind_partial(**function_kwargs)
 
-      # Set the argument defaults
-      signature = inspect.signature(function)
-      arg_names = list(signature.parameters)
-      function_kwargs = { arg: kwargs[arg] \
-          for arg in kwargs if arg in arg_names }
-      layer_kwargs = { arg: kwargs[arg] \
-          for arg in kwargs if not arg in arg_names}
-      self._function_bound_args = signature.bind_partial(**function_kwargs)
-
-      # Super
-      BaseLayer.__init__(self, **layer_kwargs)
+    # Super
+    BaseLayer.__init__(self, **layer_kwargs)
 
 
-    def call(self, inputs, **kwargs):
+  def call(self, inputs, **kwargs):
+    ''' Layer call method '''
 
-      defaults = self._function_bound_args.arguments
-      kwargs.pop('training', None)
-      return self._function(inputs, **defaults, **kwargs)
+    defaults = self._function_bound_args.arguments
+    kwargs.pop('training', None)
+    return self._function(inputs, **defaults, **kwargs)
 
-
-  # Rename and return
-  Wrapper.__name__ = name
-  return Wrapper
+  # Define layer
+  LayerClass = type(name, (BaseLayer,), { '__init__': __init__, 'call': call })
+  return LayerClass
 
 
 def layerize(name, scope):
@@ -205,6 +201,74 @@ class InstanceNormalization(BaseLayer):
     return config
 
 
+class GeneralConvBlock(BaseLayer):
+  '''\
+  Generic convolutional block that consists of:
+  - optional padding
+  - 2d convolution (no padding)
+  - Instance normalization
+  - ReLU activation
+  '''
+
+  def __init__(self, filters, kernel_size, stride=1, pad=0, **kwargs):
+    '''\
+    Options for this block.
+    Args:
+      filters: number of filters (output channels)
+      kernel_size: lenght of the square kernel
+      stride: convolution stride
+      pad: if given, a reflection padding of 'pad' values is added before
+        convolution.
+    '''
+
+    # Save options
+    self.block_options = {
+        'filters': filters,
+        'kernel_size': kernel_size,
+        'stride': stride,
+        'pad': pad,
+      }
+    
+    # Super
+    BaseLayer.__init__(self, **kwargs)
+
+
+  def build(self, input_shape):
+    ''' Instantiations '''
+
+    # Vars
+    stack = []
+    filters, kernel_size, stride, pad = [ self.block_options[opt] for opt in \
+        ('filters', 'kernel_size', 'stride', 'pad') ]
+
+    # Padding
+    if pad:
+      stack.append( PadReflection(pad=pad) )
+
+    # Convolution
+    stack.append( layers.Conv2D( filters=filters, kernel_size=kernel_size,
+        strides=stride, padding='valid') )
+
+    # Normalization
+    stack.append( InstanceNormalization() )
+
+    # Activation
+    stack.append( tf.keras.layers.ReLU() )
+
+    # Store
+    self.layers_stack = stack
+
+    # Super
+    BaseLayer.build(self, input_shape)
+
+
+  def get_config(self):
+
+    config = BaseLayer.get_config(self)
+    config.update( self.block_options )
+    return config
+
+
 @layerize('ImagePreprocessing', globals())
 def image_preprocessing(inputs, out_size):
   '''\
@@ -222,9 +286,9 @@ def image_preprocessing(inputs, out_size):
   '''
 
   # Shapes
-  inputs_shape = tf.shape(inputs)
-  batch_size = inputs_shape[0]
-  in_size = inputs_shape[1:3]
+  input_shape = tf.shape(inputs)
+  batch_size = input_shape[0]
+  in_size = input_shape[1:3]
   images = inputs
 
   # Random crop
@@ -264,19 +328,19 @@ def reduce_mean(inputs):
 
 
 @layerize('PadReflection', globals())
-def pad_reflection(inputs, pad_number):
+def pad_reflection(inputs, pad):
   '''\
   Apply a pad, with reflection strategy, to all input images.
   
   Args:
     inputs: a batch of images 4D tensor
-    pad_number: number of values to add around each image
+    pad: number of values to add around each image
   Returns:
     padded input batch
   '''
 
   inputs = tf.pad(inputs,
-      paddings = [[0,0],[pad_number,pad_number],[pad_number,pad_number],[0,0]],
+      paddings = [[0,0], [pad,pad], [pad,pad], [0,0]],
       mode = 'reflect')
   return inputs
 
