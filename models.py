@@ -7,9 +7,6 @@ Differences from the paper:
   - Weights initialization
   - Their implementation, not the paper, contains an additional convolution
     layer before the last.
-  - In their implementation there's no affine transformation, but this seems
-    strange.
-  - Trying affine transformation in ImagePreprocessing.
 '''
 # note: don't assign new properties to model: autograph interprets these as
 # layers. Be careful with name clashes with superclasses, such as _layers.
@@ -101,8 +98,7 @@ class Debugging(BaseLayer):
 
     self._layers_defs = {}
 
-    preprocessing = ImagePreprocessing()
-    self._layers_defs['pre'] = lambda x: preprocessing(x, out_size=(256,256))
+    self._layers_defs['pre'] = ImagePreprocessing(out_size=(256,256))
     self._layers_defs['net'] = Discriminator()
     self._layers_defs['mean'] = ReduceMean()
 
@@ -157,7 +153,7 @@ class Discriminator(BaseLayer):
       self.layers_stack += [
           layers.Conv2D(filters=filters, kernel_size=4, strides=2,
             padding='same'),
-          InstanceNormalization(affine=True),
+          InstanceNormalization(),
           Activation(),
         ]
 

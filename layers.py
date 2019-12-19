@@ -1,68 +1,84 @@
 '''\
 Custom keras layers that are used in the model.
 '''
+# TODO: show padding effect in tensorboard
+# TODO: resnet block
+# TODO: tensorboard again
 
 import tensorflow as tf
 from tensorflow.keras import layers
 from tensorflow.keras import losses
+import inspect
 
 
 def _make_layer(name, function):
   '''\
-  Creates a layer that calls the given tensorflow ops.
-  This can be used to create wrappers for tensor operations to include in
-  a keras model. This is not suitable for other keras layers.
+  Creates a keras layer that calls the given function.
+  The first argument of the function must be for the inputs, and the other
+  optional parameters are for options. If the returned Layer is initialized
+  with arguments for 'function', they will be used at each call.
 
   Args:
     name: the name of this layer
-    function: the function to call. The first argument must be for inputs, 
-        other argument must be keyword options.
+    function: the function to call.
+  Returns:
+    a keras layer that calls function
   '''
 
-  class GenericLayer(layers.Layer):
+  class Wrapper(layers.Layer):
     ''' Layer class wrapper '''
 
     count = 0
 
-    def __init__(self, **kargs):
+    def __init__(self, **kwargs):
 
-      # Choose a name
-      layer_name = kargs.get('name', None)
+      # Store the inner function
+      self._function = function
+
+      # Set the argument defaults
+      signature = inspect.signature(function)
+      arg_names = list(signature.parameters)
+      function_kwargs = { arg: kwargs[arg] for arg in kwargs if arg in arg_names }
+      layer_kwargs = { arg: kwargs[arg] for arg in kwargs if not arg in arg_names}
+      self._function_bound_args = signature.bind_partial(**function_kwargs)
+
+      # Choose a name for the layer
+      layer_name = layer_kwargs.get('name', None)
       if not layer_name:
 
         layer_name = name
-        if GenericLayer.count:
-          layer_name = layer_name + '_' + str(GenericLayer.count)
-        GenericLayer.count += 1
-        kargs['name'] = layer_name
+        if Wrapper.count:
+          layer_name = layer_name + '_' + str(Wrapper.count)
+        Wrapper.count += 1
+        layer_kwargs['name'] = layer_name
 
-      # Set
-      self._function = function
-      layers.Layer.__init__(self, **kargs)
+      # Super
+      layers.Layer.__init__(self, **layer_kwargs)
 
 
-    def call(self, inputs, *, training, **kargs):
-      return self._function(inputs, **kargs)
+    def call(self, inputs, **kwargs):
+      defaults = self._function_bound_args.arguments
+      kwargs.pop('training', None)
+      return self._function(inputs, **defaults, **kwargs)
 
 
   # Rename and return
-  GenericLayer.__name__ = name
-  return GenericLayer
+  Wrapper.__name__ = name
+  return Wrapper
 
 
 def layerize(name, scope):
   '''\
-  Function decorator.
+  Function decorator. Keras wrapper for Tf ops.
   Defines a layer with the ops of the decorated function.
   The original function is still available, so it can be used when a 
-  layer is not needed.
-  NOTE: Assuming the that the first argument of the decorated function is
-  for inputs, and other keywords are options. Only suitable for tf ops,
-  without variables.
+  layer is not needed. Only suitable for tf ops,
+  without persistent variables. See _make_layer for further help.
+  Layers are the preferred way to create namespaces.
 
   Args:
     name: destination class name
-    scope: dict where to define the class (eg. globals()).
+    scope: namespace (dict) where to define the class (eg. globals()).
   Returns:
     The same decorated function
   '''
@@ -144,7 +160,7 @@ def image_preprocessing(inputs, out_size):
   Initial preprocessing for a batch of images.
   Random crop, flip, normalization.
   Expects as input, when called, a batch of images (4D tensor).
-  NOTE: I couldn't use Tf ops for images, due to a probable Tf bug.
+  NOTE: I couldn't use built-in Tf ops for images, due to a probable Tf bug.
 
   Args:
     inputs: a batch of images (4d input)
@@ -194,6 +210,24 @@ def reduce_mean(inputs):
   '''
 
   return tf.math.reduce_mean(inputs, axis=(1,2,3))
+
+
+@layerize('PadReflection', globals())
+def pad_reflection(inputs, pad_number):
+  '''\
+  Apply a pad, with reflection strategy, to all input images.
+  
+  Args:
+    inputs: a batch of images 4D tensor
+    pad_number: number of values to add around each image
+  Returns:
+    padded input batch
+  '''
+
+  inputs = tf.pad(inputs,
+      paddings = [[0,0],[pad_number,pad_number],[pad_number,pad_number],[0,0]],
+      mode = 'reflect')
+  return inputs
 
 
 class BinaryAccuracyFromLogits(tf.keras.metrics.Metric):
