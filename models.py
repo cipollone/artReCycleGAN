@@ -51,8 +51,8 @@ class Debugging(BaseLayer):
     self.layers_stack = [
 
         ImagePreprocessing(out_size=(256,256)),
-        GeneralConvBlock(10, 7, 1, 3),
-        GeneralConvBlock(20, 5, 2),
+        ResNetBlock(filters=3),
+        ResNetBlock(filters=3),
         ReduceMean(),
       ]
 
@@ -136,6 +136,18 @@ class Generator(BaseLayer):
   class Transformation(BaseLayer):
     ''' Transformation phase of the generator '''
 
+    resnet_blocks = 9
+
+    def build(self, input_shape):
+
+      # Def
+      for i in range(self.resnet_blocks):
+        self.layers_stack.append(
+            ResNetBlock( filters=256 )
+          )
+
+      # Super
+      BaseLayer.build(self, input_shape)
 
 
   def build(self, input_shape):
@@ -145,6 +157,7 @@ class Generator(BaseLayer):
     self.layers_stack = [
 
         Generator.Encoding(),
+        Generator.Transformation(),
       ]
 
     # Super

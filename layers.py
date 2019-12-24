@@ -221,7 +221,8 @@ class GeneralConvBlock(BaseLayer):
   - ReLU activation
   '''
 
-  def __init__(self, filters, kernel_size, stride=1, pad=0, **kwargs):
+  def __init__(self, filters, kernel_size, stride=1, pad=0, activation=True,
+      **kwargs):
     '''\
     Options for this block.
     Args:
@@ -230,6 +231,7 @@ class GeneralConvBlock(BaseLayer):
       stride: convolution stride
       pad: if given, a reflection padding of 'pad' values is added before
         convolution.
+      activation: if true, a ReLU activation is applied.
     '''
     
     # Super
@@ -241,6 +243,7 @@ class GeneralConvBlock(BaseLayer):
         'kernel_size': kernel_size,
         'stride': stride,
         'pad': pad,
+        'activation': activation,
       }
 
 
@@ -249,8 +252,8 @@ class GeneralConvBlock(BaseLayer):
 
     # Vars
     stack = []
-    filters, kernel_size, stride, pad = [ self.layer_options[opt] \
-        for opt in ('filters', 'kernel_size', 'stride', 'pad') ]
+    filters, kernel_size, stride, pad, activation = [ self.layer_options[opt] \
+        for opt in ('filters', 'kernel_size', 'stride', 'pad', 'activation') ]
 
     # Padding
     if pad:
@@ -264,7 +267,8 @@ class GeneralConvBlock(BaseLayer):
     stack.append( InstanceNormalization() )
 
     # Activation
-    stack.append( tf.keras.layers.ReLU() )
+    if activation:
+      stack.append( tf.keras.layers.ReLU() )
 
     # Store
     self.layers_stack = stack
@@ -285,9 +289,36 @@ class ResNetBlock(BaseLayer):
       filters: number of filters (output channels) in both convolutions.
     '''
 
+    # Super
+    BaseLayer.__init__(self, **kwargs)
+
+    # Store
     self.layer_options = {
         'filters': filters,
       }
+
+
+  def build(self, input_shape):
+
+    filters = self.layer_options['filters']
+
+    # Blocks
+    self._inner_block1 = GeneralConvBlock(
+        filters=filters, kernel_size=3, stride=1, pad=1)
+    self._inner_block2 = GeneralConvBlock(
+        filters=filters, kernel_size=3, stride=1, pad=1, activation=False)
+
+    # Built
+    BaseLayer.build(self, input_shape)
+
+
+  def call(self, inputs):
+
+    out = inputs
+    out = self._inner_block1(out)
+    out = self._inner_block2(out)
+
+    return out + inputs
 
 
 @layerize('ImagePreprocessing', globals())
