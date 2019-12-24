@@ -169,7 +169,7 @@ def debug(args):
   # Saving the Tensorboard grpah without training
 
   # Model
-  input_shape = (300, 300, 3)
+  input_shape = (256, 256, 3)
   keras_model, compile_options = models.define_model(input_shape)
 
   # TensorBoard callback writer

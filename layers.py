@@ -34,15 +34,16 @@ class BaseLayer(layers.Layer):
 
     # Add this layer to count
     if not this_class in BaseLayer._layers_count:
-      BaseLayer._layers_count[this_class] = 0
+      BaseLayer._layers_count[this_class] = 1
     else:
       BaseLayer._layers_count[this_class] += 1
 
     # Choose a name
     if not 'name' in kwargs:
       name = this_class.__name__
-      if BaseLayer._layers_count[this_class] > 0:
-        name += '_' + str(BaseLayer._layers_count[this_class])
+      number = BaseLayer._layers_count[this_class]
+      if number > 1:
+        name += '_' + str(number - 1)
       kwargs['name'] = name
 
     # Initializations
@@ -221,16 +222,17 @@ class GeneralConvBlock(BaseLayer):
   - ReLU activation
   '''
 
-  def __init__(self, filters, kernel_size, stride=1, pad=0, activation=True,
-      **kwargs):
+  def __init__(self, filters, kernel_size, stride=1, pad='valid',
+      activation=True, **kwargs):
     '''\
     Options for this block.
     Args:
       filters: number of filters (output channels)
       kernel_size: lenght of the square kernel
       stride: convolution stride
-      pad: if given, a reflection padding of 'pad' values is added before
-        convolution.
+      pad: Can be 'valid', 'same', or an int. 'same' is a zero padding, 'valid'
+        means no padding, an int is the amount of reflection padding added at
+        each dimension.
       activation: if true, a ReLU activation is applied.
     '''
     
@@ -255,13 +257,21 @@ class GeneralConvBlock(BaseLayer):
     filters, kernel_size, stride, pad, activation = [ self.layer_options[opt] \
         for opt in ('filters', 'kernel_size', 'stride', 'pad', 'activation') ]
 
+    if isinstance(pad, str):
+      conv_pad, reflect_pad = pad, 0
+    elif isinstance(pad, int):
+      conv_pad, reflect_pad = 'valid', pad
+    else:
+      raise TypeError('Valid pad specification is int or str')
+
+
     # Padding
-    if pad:
-      stack.append( PadReflection(pad=pad) )
+    if reflect_pad:
+      stack.append( PadReflection(pad=reflect_pad) )
 
     # Convolution
     stack.append( layers.Conv2D( filters=filters, kernel_size=kernel_size,
-        strides=stride, padding='valid') )
+        strides=stride, padding=conv_pad) )
 
     # Normalization
     stack.append( InstanceNormalization() )
@@ -269,6 +279,59 @@ class GeneralConvBlock(BaseLayer):
     # Activation
     if activation:
       stack.append( tf.keras.layers.ReLU() )
+
+    # Store
+    self.layers_stack = stack
+
+    # Super
+    BaseLayer.build(self, input_shape)
+
+
+class GeneralConvTransposeBlock(BaseLayer):
+  '''\
+  A generic convolution transpose block contains:
+  - Transpose Convolution
+  - Instance normalization
+  - ReLU
+  '''
+
+  def __init__(self, filters, kernel_size, stride=2, **kwargs):
+    '''\
+    Options for this block.
+    Args:
+      filters: number of filters (output channels)
+      kernel_size: lenght of the square kernel
+      stride: convolution stride
+    '''
+
+    # Super
+    BaseLayer.__init__(self, **kwargs)
+
+    # Save options
+    self.layer_options = {
+        'filters': filters,
+        'kernel_size': kernel_size,
+        'stride': stride,
+      }
+
+
+  def build(self, input_shape):
+    ''' Instantiations '''
+
+    # Vars
+    stack = []
+    filters, kernel_size, stride = [ self.layer_options[opt] \
+        for opt in ('filters', 'kernel_size', 'stride') ]
+
+    # Convolution transpose
+    stack.append( layers.Conv2DTranspose( filters=filters,
+      kernel_size=kernel_size, strides=stride, padding='same') )
+
+    # Normalization
+    stack.append( InstanceNormalization() )
+
+    # Activation
+    stack.append( tf.keras.layers.ReLU() )
 
     # Store
     self.layers_stack = stack

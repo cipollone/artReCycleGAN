@@ -7,6 +7,10 @@ Differences from the paper:
   - Weights initialization
   - Their implementation, not the paper, contains an additional convolution
     layer before the last.
+  - Paper says that last activation is also a relu. Their implementation
+    contains a tanh instead.
+  - Other implementations than the original also add a relu activation
+    after the sum of the residual blocks (after skip connections).
 '''
 # note: don't assign new properties to model: autograph interprets these as
 # layers. Be careful with name clashes with superclasses, such as _layers.
@@ -125,8 +129,8 @@ class Generator(BaseLayer):
       self.layers_stack = [
 
           GeneralConvBlock( filters=64, kernel_size=7, stride=1, pad=3 ),
-          GeneralConvBlock( filters=128, kernel_size=3, stride=2 ),
-          GeneralConvBlock( filters=256, kernel_size=3, stride=2 ),
+          GeneralConvBlock( filters=128, kernel_size=3, stride=2, pad='same' ),
+          GeneralConvBlock( filters=256, kernel_size=3, stride=2, pad='same' ),
         ]
 
       # Super
@@ -142,14 +146,32 @@ class Generator(BaseLayer):
 
       # Def
       for i in range(self.resnet_blocks):
-        self.layers_stack.append(
-            ResNetBlock( filters=256 )
-          )
+        self.layers_stack.append( ResNetBlock( filters=256 ) )
 
       # Super
       BaseLayer.build(self, input_shape)
 
 
+  class Decoding(BaseLayer):
+    ''' Decoding phase of the generator '''
+
+    def build(self, input_shape):
+
+      # Def
+      self.layers_stack = [
+
+          GeneralConvTransposeBlock( filters=128, kernel_size=3, stride=2 ),
+          GeneralConvTransposeBlock( filters=64, kernel_size=3, stride=2 ),
+          GeneralConvBlock( filters=3, kernel_size=7, stride=1, pad=3,
+              activation=False ),
+          tf.keras.activations.tanh,
+        ]
+
+      # Super
+      BaseLayer.build(self, input_shape)
+
+
+  # Generator
   def build(self, input_shape):
     ''' Defines the net '''
 
@@ -158,6 +180,7 @@ class Generator(BaseLayer):
 
         Generator.Encoding(),
         Generator.Transformation(),
+        Generator.Decoding(),
       ]
 
     # Super
