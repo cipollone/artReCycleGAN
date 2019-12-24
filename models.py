@@ -7,9 +7,10 @@ Differences from the paper:
   - Weights initialization
   - Their implementation, not the paper, contains an additional convolution
     layer before the last.
-  - In their implementation there's no affine transformation, but this seems
-    strange.
-  - Using a fixed normalization for images in ImagePreprocessing.
+  - Paper says that last activation is also a relu. Their implementation
+    contains a tanh instead.
+  - Other implementations than the original also add a relu activation
+    after the sum of the residual blocks (after skip connections).
 '''
 # note: don't assign new properties to model: autograph interprets these as
 # layers. Be careful with name clashes with superclasses, such as _layers.
@@ -31,7 +32,7 @@ def define_model(input_shape):
   '''
 
   # Define
-  model_layer = Debugging()
+  model_layer = Generator()
 
   # IO behaviour
   inputs = tf.keras.Input(shape=input_shape)
@@ -41,83 +42,26 @@ def define_model(input_shape):
   return keras_model, model_layer.compile_defaults
 
 
-class BaseLayer(layers.Layer):
-  '''\
-  Base class for layers of this module. Subclasses can push layers to
-  self.layers_stack to create a simple sequential layer, otherwise they must
-  override call(). self.compile_defaults is a dictionary of default argument
-  when one of these layers is used as a model.
-  '''
-
-  def __init__(self, *args, **kargs):
-    layers.Layer.__init__(self, *args, **kargs)
-    self.layers_stack = []
-    self.compile_defaults = {}
-
-
-  def call(self, inputs):
-
-    # This must be overridden if layers_stack is not used
-    if len(self.layers_stack) == 0:
-      raise NotImplementedError(
-        'call() must be overridden if self.layers_stack is not used.')
-
-    # Sequential model by default
-    for layer in self.layers_stack:
-      inputs = layer(inputs)
-    return inputs
-
-
-  def get_config(self):
-    ''' Empty dict if fine if subclasses constructors accept no arguments '''
-    return {}
-
-
 class Debugging(BaseLayer):
   '''\
   This model is only used during development.
-
-  Testing discriminator as a model (as a classifier).
-  Adding input, preprocessing, and output.
-
-  From a batch of input images, computes the vector of probabilities for the
-  binary classification task.
   '''
 
-  def __init__(self):
-    BaseLayer.__init__(self)
 
-    self.compile_defaults = {
-        'loss': tf.losses.BinaryCrossentropy(from_logits=True),
-        'metrics': [BinaryAccuracyFromLogits()],
-      }
-
-
-  def build(self, inputs_shape):
+  def build(self, input_shape):
     ''' Defines the net '''
 
-    self._layers_defs = {}
+    # Def
+    self.layers_stack = [
 
-    preprocessing = ImagePreprocessing()
-    self._layers_defs['pre'] = lambda x: preprocessing(x, out_size=(256,256))
-    self._layers_defs['net'] = Discriminator()
-    self._layers_defs['mean'] = ReduceMean()
+        ImagePreprocessing(out_size=(256,256)),
+        ResNetBlock(filters=3),
+        ResNetBlock(filters=3),
+        ReduceMean(),
+      ]
 
-    # Built
-    BaseLayer.build(self, inputs_shape)
-
-
-  def call(self, inputs):
-
-    # Model
-    inputs = self._layers_defs['pre'](inputs)
-    inputs = self._layers_defs['net'](inputs)
-    inputs = self._layers_defs['mean'](inputs)
-
-    # Outputs
-    inputs = tf.identity(inputs, name='logits')
-
-    return inputs
+    # Super
+    BaseLayer.build(self, input_shape)
 
 
 class Discriminator(BaseLayer):
@@ -133,7 +77,7 @@ class Discriminator(BaseLayer):
   classification.
   '''
 
-  def build(self, inputs_shape):
+  def build(self, input_shape):
     ''' Defines the net. '''
 
     # Parameters
@@ -165,5 +109,80 @@ class Discriminator(BaseLayer):
       ]
 
     # Built
-    BaseLayer.build(self, inputs_shape)
+    BaseLayer.build(self, input_shape)
+
+
+class Generator(BaseLayer):
+  '''\
+  Image generator in CycleGAN. Transforms images from one domain to another.
+  The generator is composed of three parts: encoding, transformation,
+  deconding, which are respectively based on convolutional, resnet, and
+  convolutional transpose blocks. See paper for a more precise description.
+  '''
+
+  class Encoding(BaseLayer):
+    ''' Encoding phase of the generator '''
+
+    def build(self, input_shape):
+
+      # Def
+      self.layers_stack = [
+
+          GeneralConvBlock( filters=64, kernel_size=7, stride=1, pad=3 ),
+          GeneralConvBlock( filters=128, kernel_size=3, stride=2, pad='same' ),
+          GeneralConvBlock( filters=256, kernel_size=3, stride=2, pad='same' ),
+        ]
+
+      # Super
+      BaseLayer.build(self, input_shape)
+
+
+  class Transformation(BaseLayer):
+    ''' Transformation phase of the generator '''
+
+    resnet_blocks = 9
+
+    def build(self, input_shape):
+
+      # Def
+      for i in range(self.resnet_blocks):
+        self.layers_stack.append( ResNetBlock( filters=256 ) )
+
+      # Super
+      BaseLayer.build(self, input_shape)
+
+
+  class Decoding(BaseLayer):
+    ''' Decoding phase of the generator '''
+
+    def build(self, input_shape):
+
+      # Def
+      self.layers_stack = [
+
+          GeneralConvTransposeBlock( filters=128, kernel_size=3, stride=2 ),
+          GeneralConvTransposeBlock( filters=64, kernel_size=3, stride=2 ),
+          GeneralConvBlock( filters=3, kernel_size=7, stride=1, pad=3,
+              activation=False ),
+          tf.keras.activations.tanh,
+        ]
+
+      # Super
+      BaseLayer.build(self, input_shape)
+
+
+  # Generator
+  def build(self, input_shape):
+    ''' Defines the net '''
+
+    # Def
+    self.layers_stack = [
+
+        Generator.Encoding(),
+        Generator.Transformation(),
+        Generator.Decoding(),
+      ]
+
+    # Super
+    BaseLayer.build(self, input_shape)
 
