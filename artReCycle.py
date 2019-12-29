@@ -81,14 +81,14 @@ def train(args):
   model_checkpoint = os.path.join(model_path, 'model')
 
   # Define datasets
-  input_shape = (300, 300, 3)
+  image_shape = (300, 300, 3)
   train_dataset, train_size = data.load('classes', 'train',
-      shape=input_shape, batch=args.batch)
+      shape=image_shape, batch=args.batch)
   test_dataset, test_size = data.load('classes', 'test',
-      shape=input_shape, batch=args.batch)
+      shape=image_shape, batch=args.batch)
 
   # Define keras model
-  keras_model, compile_options = models.define_model(input_shape)
+  keras_model, compile_options = models.define_model(image_shape)
 
   # Save keras model
   keras_json = keras_model.to_json()
@@ -169,8 +169,10 @@ def debug(args):
   # Saving the Tensorboard grpah without training
 
   # Model
-  input_shape = (256, 256, 3)
-  keras_model, compile_options = models.define_model(input_shape)
+  image_shape = (300, 300, 3)
+  keras_model, compile_options = models.define_model(image_shape)
+
+  keras_model.summary()
 
   # TensorBoard callback writer
   tbCallback = tf.keras.callbacks.TensorBoard('debug', write_graph=True)

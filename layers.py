@@ -460,6 +460,32 @@ def pad_reflection(inputs, pad):
   return inputs
 
 
+@layerize('DiscriminatorLoss', globals())
+def discriminator_loss(inputs):
+  '''\
+  Returns the loss associated to the Discriminator.
+  True images must be classified as ones, generated as zeroes.
+  Args:
+    inputs: a batch of logits, where the first half is for
+      images that should be classified as true, and the remaining are for
+      generated images.
+  Returns:
+    a scalar loss
+  '''
+  
+  # Separate logits
+  true_logits, false_logits = tf.split(inputs, 2, axis=0)
+
+  # Probabilities
+  true_prob = tf.math.sigmoid(true_logits)
+  false_prob = tf.math.sigmoid(false_logits)
+
+  # Mse
+  mse = (tf.reduce_mean( tf.math.squared_difference(true_prob, 1) ) +
+      tf.reduce_mean( tf.math.square(false_prob) ))
+  return mse
+
+
 class BinaryAccuracyFromLogits(tf.keras.metrics.Metric):
   '''\
   Just line BinaryAccuracy, but when the output of the model is in logits.
