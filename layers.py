@@ -463,7 +463,7 @@ def pad_reflection(inputs, pad):
 @layerize('DiscriminatorLoss', globals())
 def discriminator_loss(inputs):
   '''\
-  Returns the loss associated to the Discriminator.
+  Returns the GAN loss associated to the Discriminator.
   True images must be classified as ones, generated as zeroes.
   Args:
     inputs: a batch of logits, where the first half is for
@@ -483,6 +483,30 @@ def discriminator_loss(inputs):
   # Mse
   mse = (tf.reduce_mean( tf.math.squared_difference(true_prob, 1) ) +
       tf.reduce_mean( tf.math.square(false_prob) ))
+  return mse
+
+
+@layerize('GeneratorLoss', globals())
+def generator_loss(inputs):
+  '''\
+  Returns the GAN loss associated to the Generator.
+  The goal of the generator is to trick the discriminator on the generated
+  images.
+  Args:
+    inputs: a batch of logits, where the first half is for true
+      images, and the remaining are for generated images.
+  Returns:
+    a scalar loss
+  '''
+  
+  # Separate logits
+  true_logits, false_logits = tf.split(inputs, 2, axis=0)
+
+  # Probabilities
+  false_prob = tf.math.sigmoid(false_logits)
+
+  # Mse
+  mse = tf.reduce_mean( tf.math.squared_difference(false_prob, 1) )
   return mse
 
 

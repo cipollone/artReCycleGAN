@@ -52,11 +52,7 @@ def define_model(image_shape):
 class CycleGAN(BaseLayer):
   '''\
   Full CycleGAN model.
-  Inputs are batch of images from both datasets. Outputs are:
-  - Transformed images from A to B
-  - Transformed images from B to A
-  - GAN loss for Discriminator A
-  - GAN loss for Discriminator B
+  Inputs are batch of images from both datasets.
   '''
 
   def build(self, input_shape):
@@ -72,9 +68,6 @@ class CycleGAN(BaseLayer):
     # Generators
     self.discriminator_A = Discriminator(name='Discriminator_A')
     self.discriminator_B = Discriminator(name='Discriminator_B')
-
-    # Losses
-    self.discriminator_loss = DiscriminatorLoss()
 
     # Super
     BaseLayer.build(self, input_shape)
@@ -101,16 +94,12 @@ class CycleGAN(BaseLayer):
     all_for_B = tf.concat((images_B, fake_B), axis=0, name='all_B')
     decision_B = self.discriminator_B(all_for_B)
 
-    # Discriminator loss
-    discriminator_A_loss = self.discriminator_loss(decision_A)
-    discriminator_B_loss = self.discriminator_loss(decision_B)
-
     # Rename returns
     outputs = (
         tf.identity(fake_B, name='fake_B'),
         tf.identity(fake_A, name='fake_A'),
-        tf.identity(discriminator_A_loss, name='discriminator_A_loss'),
-        tf.identity(discriminator_B_loss, name='discriminator_B_loss'),
+        tf.identity(decision_A, name='decision_A'),
+        tf.identity(decision_B, name='decision_B'),
       )
 
     return outputs

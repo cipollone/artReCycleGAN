@@ -8,9 +8,10 @@ import tensorflow as tf
 
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import variables
+import tensorflow.keras.callbacks as callbacks
 
 
-class CountersSaverCallback(tf.keras.callbacks.Callback):
+class CountersSaverCallback(callbacks.Callback):
   '''\
   This callback saves and restores counters: step number and epoch.
   '''
@@ -20,7 +21,7 @@ class CountersSaverCallback(tf.keras.callbacks.Callback):
     Args:
       log_dir: directory of logs
     '''
-    tf.keras.callbacks.Callback.__init__(self)
+    callbacks.Callback.__init__(self)
     self._log_dir = log_dir
     self._filename = os.path.join(log_dir, 'counters.txt')
 
@@ -49,9 +50,9 @@ class CountersSaverCallback(tf.keras.callbacks.Callback):
       f.write('{}, {}\n'.format(self.epoch, self.step))
 
 
-class TensorBoardWithStep(tf.keras.callbacks.TensorBoard):
+class TensorBoardWithStep(callbacks.TensorBoard):
   '''\
-  Same as tf.keras.callbacks.TensorBoard, with the possibility of setting the
+  Same as callbacks.TensorBoard, with the possibility of setting the
   initial step.
   Warining: this object customizes an internal behaviour. Working on version 
   v2.1.0rc0. Just don't use this object, if it doesn't work with future
@@ -59,13 +60,13 @@ class TensorBoardWithStep(tf.keras.callbacks.TensorBoard):
   '''
 
   def __init__(self, initial_step=0, *args, **kwargs):
-    tf.keras.callbacks.TensorBoard.__init__(self, *args, **kwargs)
+    callbacks.TensorBoard.__init__(self, *args, **kwargs)
     self._initial_step = initial_step
 
 
   def _init_batch_steps(self):
     '''\
-    Copied from tf.keras.callbacks.TensorBoard with few modifications
+    Copied from callbacks.TensorBoard with few modifications
     (initial step other than 0).
     '''
 
