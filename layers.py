@@ -18,8 +18,6 @@ class BaseLayer(layers.Layer):
       can simply push to this list without defining call().
     - self.layer_options can be filled with subclasses' constructor arguments,
       without the need of defining get_config().
-    - self.compile_defaults is a dict of compile options, useful when this
-      layer is used as the outer block in a keras model.
   '''
 
   # Number all layers. Map classes to count
@@ -50,7 +48,6 @@ class BaseLayer(layers.Layer):
     defaults = {
         'layers_stack': [],        # Empty layer list
         'layer_options': {},       # No options
-        'compile_defaults': {},    # No compilation options
       }
     for key in defaults:
       if not hasattr(self, key):

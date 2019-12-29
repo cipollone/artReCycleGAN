@@ -16,54 +16,6 @@ import models
 from customizations import *
 
 
-def _prepare_directories(model_name, resume=False):
-  '''\
-  Prepares empty directories where logs and models are saved.
-  'log directory' refers to the path of the current log.
-  'logs 'directory' refers to the path of all logs (parent dir).
-
-  Args:
-    model_name: identifier for this training job
-    resume: if true, directories are not erased.
-  Returns:
-    model directory, log directory, logs directory
-  '''
-
-  # Base paths
-  model_path = os.path.join('models', model_name)
-  logs_path = os.path.join('logs', model_name)
-  dirs = (model_path, logs_path)
-
-  # Erase?
-  if not resume:
-
-    # Existing?
-    existing = []
-    for d in dirs:
-      if os.path.exists(d):
-        existing.append(d)
-
-    # Confirm
-    if existing:
-      print('Erasing', *existing, '. Continue (Y/n)? ', end='')
-      c = input()
-      if not c in ('y', 'Y', ''): quit()
-
-    # New
-    for d in existing:
-      shutil.rmtree(d)
-    for d in dirs:
-      os.makedirs(d)
-
-  # Logs alwas use new directories (using increasing numbers)
-  i = 0
-  while os.path.exists(os.path.join(logs_path, str(i))): i += 1
-  log_path = os.path.join(logs_path, str(i))
-  os.mkdir(log_path)
-
-  return (model_path, log_path, logs_path)
-
-
 def train(args):
   '''\
   Training function.
@@ -84,25 +36,15 @@ def train(args):
   image_shape = (300, 300, 3)
   train_dataset, train_size = data.load('classes', 'train',
       shape=image_shape, batch=args.batch)
-  test_dataset, test_size = data.load('classes', 'test',
-      shape=image_shape, batch=args.batch)
 
   # Define keras model
-  keras_model, compile_options = models.define_model(image_shape)
+  keras_model = models.define_model(image_shape)
 
   # Save keras model
   keras_json = keras_model.to_json()
   keras_json = json.dumps(json.loads(keras_json), indent=2)
   with open(model_json, 'w') as f:
     f.write(keras_json)
-
-  # Compile options
-  compile_options.update({
-      'optimizer': tf.keras.optimizers.Adam(learning_rate=args.rate),
-    })
-
-  # Compile for loss, metrics etc
-  keras_model.compile(**compile_options)
 
   # Resuming
   if args.cont:
@@ -170,13 +112,61 @@ def debug(args):
 
   # Model
   image_shape = (300, 300, 3)
-  keras_model, compile_options = models.define_model(image_shape)
+  keras_model = models.define_model(image_shape)
 
   keras_model.summary()
 
   # TensorBoard callback writer
   tbCallback = tf.keras.callbacks.TensorBoard('debug', write_graph=True)
   tbCallback.set_model(keras_model)
+
+
+def _prepare_directories(model_name, resume=False):
+  '''\
+  Prepares empty directories where logs and models are saved.
+  'log directory' refers to the path of the current log.
+  'logs 'directory' refers to the path of all logs (parent dir).
+
+  Args:
+    model_name: identifier for this training job
+    resume: if true, directories are not erased.
+  Returns:
+    model directory, log directory, logs directory
+  '''
+
+  # Base paths
+  model_path = os.path.join('models', model_name)
+  logs_path = os.path.join('logs', model_name)
+  dirs = (model_path, logs_path)
+
+  # Erase?
+  if not resume:
+
+    # Existing?
+    existing = []
+    for d in dirs:
+      if os.path.exists(d):
+        existing.append(d)
+
+    # Confirm
+    if existing:
+      print('Erasing', *existing, '. Continue (Y/n)? ', end='')
+      c = input()
+      if not c in ('y', 'Y', ''): quit()
+
+    # New
+    for d in existing:
+      shutil.rmtree(d)
+    for d in dirs:
+      os.makedirs(d)
+
+  # Logs alwas use new directories (using increasing numbers)
+  i = 0
+  while os.path.exists(os.path.join(logs_path, str(i))): i += 1
+  log_path = os.path.join(logs_path, str(i))
+  os.mkdir(log_path)
+
+  return (model_path, log_path, logs_path)
 
 
 def main():
