@@ -13,7 +13,7 @@ def define_model(image_shape):
   '''\
   Creates a CycleGAN model.
   Args:
-    image_shape: 3D tensor. Shape of each input image.
+    image_shape: 3D Shape of each input image.
   Returns:
     keras model
   '''
@@ -34,6 +34,7 @@ def define_model(image_shape):
   return keras_model
 
 
+# This should be a class with step function.
 def cycleGAN_step(cgan):
   '''\
   One training step for the CycleGAN model.

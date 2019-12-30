@@ -166,3 +166,15 @@ def load(name, split, shape=(300, 300, 3), batch=None):
   images = images.prefetch(1)
 
   return images, size
+
+
+def load_pair(name_A, name_B, split, **kwargs):
+  ''' Load a pair of datasets '''
+
+  dataset_A, size_A = load(name_A, split, **kwargs)
+  dataset_B, size_B = load(name_B, split, **kwargs)
+
+  # Dataset size is average of the two
+  size = (size_A + size_B) / 2
+
+  return (dataset_A, dataset_B), size

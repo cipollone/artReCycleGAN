@@ -34,7 +34,9 @@ def train(args):
 
   # Define datasets
   image_shape = (300, 300, 3)
-  train_dataset, train_size = data.load('classes', 'train',
+  train_datasets, train_size = data.load_pair(*args.datasets, 'train',
+      shape=image_shape, batch=args.batch)
+  test_datasets, test_size = data.load_pair(*args.datasets, 'test',
       shape=image_shape, batch=args.batch)
 
   # Define keras model
@@ -51,39 +53,50 @@ def train(args):
     keras_model.load_weights(model_checkpoint)
     print('> Weights loaded')
 
-  # Training settings
+  # TODO: writers and save graph
+
+  # Training steps
+  step_saver = CountersSaver(log_dir=logs_path, log_every=args.logs)
+
   steps_per_epoch = int(train_size/args.batch) \
       if not args.epoch_steps else args.epoch_steps
+  epochs = range(step_saver.epoch, args.epochs)
 
-  # Step saver
-  counter_saver_callback = CountersSaverCallback(logs_path)
-  step = counter_saver_callback.step
-  epoch = counter_saver_callback.epoch
+  # Print job
+  print('> Training.  Epochs:', epochs)
 
-  # Callbacks
-  callbacks = [
-      tf.keras.callbacks.ModelCheckpoint(
-        filepath = model_checkpoint, monitor = 'loss', save_best_only = True,
-        mode = 'max', save_freq = 'epoch', save_weights_only = True
-      ),
-      TensorBoardWithStep(
-        initial_step = step,
-        log_dir = log_path,
-        write_graph = not args.cont,
-        update_freq = args.logs
-      ),
-      tf.keras.callbacks.TerminateOnNaN(),
-      counter_saver_callback
-    ]
+  # Training loop
+  for epoch in epochs:
+    for epoch_step in range(steps_per_epoch):
 
-  # Train
-  keras_model.fit(train_dataset,
-      epochs = args.epochs,
-      steps_per_epoch = steps_per_epoch,
-      callbacks = callbacks,
-      initial_epoch = epoch,
-      shuffle = False,
-    )
+      # TODO: How to write the forward pass with datasets?
+
+      # Debugging
+      print('training step')
+      input()
+
+      ## Validation and log
+      #if step_saver.step % args.logs == 0 or epoch_step == steps_per_epoch-1:
+
+      #  # Metrics
+      #  dA_loss_metric = tf.metrics.Mean('dA_loss')
+
+      #  # Evaluate on test set
+      #  for test_batch_A, test_batch_B in zip(*test_datasets):
+      #    print(test_batch_A.shape, test_batch_B.shape)
+
+      #    # Accumulate
+      #    fake_B, fake_A, dA_loss, dB_loss, gA_loss, gB_loss = \
+      #        keras_model((test_batch_A, test_batch_B))
+
+      #    dA_loss_metric.update_state(dA_loss)
+
+
+      # End step
+      step_saver.new_step()
+
+    # End epoch
+    step_saver.new_epoch()
 
 
 def use(args):

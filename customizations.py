@@ -1,33 +1,32 @@
-'''\
-This module defines utilities to personalize the Keras interface with
-custom operations.
-'''
+''' Utilities '''
 
 import os
-import tensorflow as tf
-
-from tensorflow.python.framework import ops
-from tensorflow.python.ops import variables
-import tensorflow.keras.callbacks as callbacks
 
 
-class CountersSaverCallback(callbacks.Callback):
+class CountersSaver:
   '''\
-  This callback saves and restores counters: step number and epoch.
+  This object saves and restores counters: step number and epoch.
+  Counters are saved every log_every steps and every epoch.
   '''
 
-  def __init__(self, log_dir):
+  def __init__(self, log_dir, log_every=1):
     '''\
     Args:
       log_dir: directory of logs
+      log_every: frequency of savings in number of steps
     '''
-    callbacks.Callback.__init__(self)
+
     self._log_dir = log_dir
+    self._log_every = log_every
+
     self._filename = os.path.join(log_dir, 'counters.txt')
 
+    # New run
     if not os.path.exists(self._filename):
       self.step = 0
       self.epoch = 0
+
+    # Resuming
     else:
       with open(self._filename) as f:
         lines = f.readlines()
@@ -36,52 +35,29 @@ class CountersSaverCallback(callbacks.Callback):
       self.epoch = int(epoch_s)
 
 
-  def on_train_batch_end(self, batch, logs=None):
-    self.step += 1
- 
+  def __str__(self):
+    return str({'step': self.step, 'epoch': self.epoch})
 
-  def on_epoch_end(self, epoch, logs=None):
+
+  def new_step(self):
+    ''' Notify one step '''
+
+    self.step += 1
+
+    if self.step % self._log_every == 0:
+      self._update_log()
+
+
+  def new_epoch(self):
+    ''' Notify one epoch '''
+
     self.epoch += 1
     self._update_log()
 
+
   def _update_log(self):
+    ''' Write the counters to file '''
+
     with open(self._filename, 'w') as f:
       f.write('epoch, step\n')
       f.write('{}, {}\n'.format(self.epoch, self.step))
-
-
-class TensorBoardWithStep(callbacks.TensorBoard):
-  '''\
-  Same as callbacks.TensorBoard, with the possibility of setting the
-  initial step.
-  Warining: this object customizes an internal behaviour. Working on version 
-  v2.1.0rc0. Just don't use this object, if it doesn't work with future
-  versions.
-  '''
-
-  def __init__(self, initial_step=0, *args, **kwargs):
-    callbacks.TensorBoard.__init__(self, *args, **kwargs)
-    self._initial_step = initial_step
-
-
-  def _init_batch_steps(self):
-    '''\
-    Copied from callbacks.TensorBoard with few modifications
-    (initial step other than 0).
-    '''
-
-    if ops.executing_eagerly_outside_functions():
-      # Variables are needed for the `step` value of custom tf.summaries
-      # to be updated inside a tf.function.
-      self._total_batches_seen = {
-          self._train_run_name: variables.Variable(
-            self._initial_step, dtype='int64'),
-          self._validation_run_name: variables.Variable(0, dtype='int64')
-      }
-    else:
-      # Custom tf.summaries are not supported in legacy graph mode.
-      self._total_batches_seen = {
-          self._train_run_name: self._initial_step,
-          self._validation_run_name: 0
-      }
-
