@@ -507,6 +507,16 @@ def generator_loss(inputs):
   return mse
 
 
+@layerize('ImageUnnormalize', globals())
+def image_unnormalize(inputs):
+  '''\
+  Scales a batch of images from [-1,1] to [0,255].
+  '''
+
+  return ((inputs + 1) * 127.5)
+
+
+
 class BinaryAccuracyFromLogits(tf.keras.metrics.Metric):
   '''\
   Just line BinaryAccuracy, but when the output of the model is in logits.

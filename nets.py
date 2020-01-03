@@ -79,8 +79,8 @@ class CycleGAN(BaseLayer):
     # Rename returns
     outputs = (
 
-        tf.identity(fake_B, name='fake_B'),
         tf.identity(fake_A, name='fake_A'),
+        tf.identity(fake_B, name='fake_B'),
 
         tf.identity(discriminator_A_loss, name='discriminator_A_loss'),
         tf.identity(discriminator_B_loss, name='discriminator_B_loss'),

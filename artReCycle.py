@@ -13,6 +13,7 @@ import tensorflow as tf
 
 import data
 import models
+from layers import image_unnormalize
 from customizations import *
 
 
@@ -32,12 +33,22 @@ def train(args):
   model_json = os.path.join(model_path, 'keras.json')
   model_checkpoint = os.path.join(model_path, 'model')
 
+  # Summary writers
+  train_summary_writer = tf.summary.create_file_writer(
+      os.path.join(log_path, 'train'))
+  test_summary_writer = tf.summary.create_file_writer(
+      os.path.join(log_path, 'test'))
+
   # Define datasets
   image_shape = (300, 300, 3)
-  train_datasets, train_size = data.load_pair(*args.datasets, 'train',
+  train_dataset, train_size = data.load_pair(*args.datasets, 'train',
       shape=image_shape, batch=args.batch)
-  test_datasets, test_size = data.load_pair(*args.datasets, 'test',
+  test_dataset, test_size = data.load_pair(*args.datasets, 'test',
       shape=image_shape, batch=args.batch)
+  one_image_dataset, _ = data.load_pair(*args.datasets, 'test',
+      shape=image_shape, batch=1)
+
+  train_dataset_it = iter(train_dataset)
 
   # Define keras model
   keras_model = models.define_model(image_shape)
@@ -48,12 +59,15 @@ def train(args):
   with open(model_json, 'w') as f:
     f.write(keras_json)
 
+  # Save TensorBoard graph
+  if not args.cont:
+    tbCallback = tf.keras.callbacks.TensorBoard(log_path, write_graph=True)
+    tbCallback.set_model(keras_model)
+
   # Resuming
   if args.cont:
     keras_model.load_weights(model_checkpoint)
     print('> Weights loaded')
-
-  # TODO: writers and save graph
 
   # Training steps
   step_saver = CountersSaver(log_dir=logs_path, log_every=args.logs)
@@ -67,30 +81,57 @@ def train(args):
 
   # Training loop
   for epoch in epochs:
+    print('> Epoch', step_saver.epoch)
+
     for epoch_step in range(steps_per_epoch):
+      print('> Step', step_saver.step, end='\r')
 
-      # TODO: How to write the forward pass with datasets?
+      # TODO: train
+      inputs = next(train_dataset_it)
+      output = [None, None, 0,0,0,0]
 
-      # Debugging
-      print('training step')
-      input()
+      # Validation and log
+      if step_saver.step % args.logs == 0 or epoch_step == steps_per_epoch-1:
+        print('\n> Validation')
 
-      ## Validation and log
-      #if step_saver.step % args.logs == 0 or epoch_step == steps_per_epoch-1:
+        # Accumulators
+        metrics_names = models.get_model_metrics(None)
+        test_metrics_mean = {name: tf.metrics.Mean(name) \
+            for name in metrics_names}
+  
+        # Evaluate on test set
+        models.compute_model_metrics(keras_model, test_dataset,
+            test_metrics_mean)
 
-      #  # Metrics
-      #  dA_loss_metric = tf.metrics.Mean('dA_loss')
+        # All metrics
+        train_metrics = models.get_model_metrics(output)
+        test_metrics = {name: test_metrics_mean[name].result().numpy() \
+            for name in test_metrics_mean}
 
-      #  # Evaluate on test set
-      #  for test_batch_A, test_batch_B in zip(*test_datasets):
-      #    print(test_batch_A.shape, test_batch_B.shape)
+        # Log in console
+        print('  Train metrics:', train_metrics)
+        print('  Test metrics:', test_metrics)
 
-      #    # Accumulate
-      #    fake_B, fake_A, dA_loss, dB_loss, gA_loss, gB_loss = \
-      #        keras_model((test_batch_A, test_batch_B))
+        # Log in TensorBoard
+        with train_summary_writer.as_default():
+          for metric in train_metrics:
+            tf.summary.scalar(metric, train_metrics[metric],
+                step=step_saver.step)
+        with test_summary_writer.as_default():
+          for metric in test_metrics:
+            tf.summary.scalar(metric, test_metrics[metric],
+                step=step_saver.step)
 
-      #    dA_loss_metric.update_state(dA_loss)
+        # Transform images for visualization
+        inputs = next(iter(one_image_dataset))
+        fake_A, fake_B, *_ = keras_model(inputs)
+        fake_A_viz = image_unnormalize(fake_A)
+        fake_B_viz = image_unnormalize(fake_B)
 
+        # Log images
+        with test_summary_writer.as_default():
+          tf.summary.image('fake_A', fake_A_viz, step=step_saver.step)
+          tf.summary.image('fake_B', fake_B_viz, step=step_saver.step)
 
       # End step
       step_saver.new_step()
@@ -121,7 +162,7 @@ def debug(args):
 
   print('> Debug')
 
-  # Saving the Tensorboard grpah without training
+  # Saving the Tensorboard graph without training
 
   # Model
   image_shape = (300, 300, 3)

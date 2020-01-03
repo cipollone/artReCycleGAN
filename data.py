@@ -157,8 +157,9 @@ def load(name, split, shape=(300, 300, 3), batch=None):
     batch = size
 
   # Input pipeline
-  images = images.shuffle(min(size, 10000))
-  if split == 'train': images = images.repeat()
+  if split == 'train':
+    images = images.shuffle(min(size, 10000))
+    images = images.repeat()
   images = images.map(load_image \
       if not classification else load_labelled_image,
       num_parallel_calls=tf.data.experimental.AUTOTUNE)
@@ -177,4 +178,4 @@ def load_pair(name_A, name_B, split, **kwargs):
   # Dataset size is average of the two
   size = (size_A + size_B) / 2
 
-  return (dataset_A, dataset_B), size
+  return tf.data.Dataset.zip((dataset_A, dataset_B)), size
