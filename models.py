@@ -22,31 +22,93 @@ from tensorflow.keras import layers
 from layers import *
 
 
-def define_model(input_shape):
+def define_model(image_shape):
   '''\
   This method is used to select the model to use, so not to modify the main
   training file.
 
+  Args:
+    image_shape: 3D tensor. Shape of each input image.
   Returns:
     keras model, and a dictionary of default options for compile().
   '''
 
   # Define
-  model_layer = Generator()
+  model_layer = CycleGAN()
 
-  # IO behaviour
-  inputs = tf.keras.Input(shape=input_shape)
+  # Inputs are two batches of images from both datasets
+  input_A = tf.keras.Input(shape=image_shape, name='Input_A')
+  input_B = tf.keras.Input(shape=image_shape, name='Input_B')
+  inputs = (input_A, input_B)
+
+  # Model from IO behaviour
   outputs = model_layer(inputs)
-  keras_model = tf.keras.Model(inputs=inputs, outputs=outputs, name='Model')
+  keras_model = tf.keras.Model(inputs=inputs, outputs=outputs,
+      name=model_layer.__class__.__name__)
 
   return keras_model, model_layer.compile_defaults
+
+
+class CycleGAN(BaseLayer):
+  '''\
+  Full CycleGAN model.
+  Inputs are batch of images from both datasets.
+  '''
+
+  def build(self, input_shape):
+    ''' Defines the net. '''
+
+    # Preprocessing
+    self.preprocessing = ImagePreprocessing(out_size=(256,256))
+
+    # Discriminators
+    self.generator_AB = Generator(name='Generator_AB')
+    self.generator_BA = Generator(name='Generator_BA')
+
+    # Generators
+    self.discriminator_A = Discriminator(name='Discriminator_A')
+    self.discriminator_B = Discriminator(name='Discriminator_B')
+
+    # Super
+    BaseLayer.build(self, input_shape)
+
+
+  def call(self, inputs):
+    ''' Forward pass '''
+
+    # Separate inputs of the two domains
+    images_A, images_B = inputs
+
+    # Image preprocessing
+    images_A = self.preprocessing(images_A)
+    images_B = self.preprocessing(images_B)
+
+    # Normal transform
+    fake_B = self.generator_AB(images_A)
+    fake_A = self.generator_BA(images_B)
+
+    # Decisions (logits)
+    all_for_A = tf.concat((images_A, fake_A), axis=0, name='all_A')
+    decision_A = self.discriminator_A(all_for_A)
+
+    all_for_B = tf.concat((images_B, fake_B), axis=0, name='all_B')
+    decision_B = self.discriminator_B(all_for_B)
+
+    # Rename returns
+    outputs = (
+        tf.identity(fake_B, name='fake_B'),
+        tf.identity(fake_A, name='fake_A'),
+        tf.identity(decision_A, name='decision_A'),
+        tf.identity(decision_B, name='decision_B'),
+      )
+
+    return outputs
 
 
 class Debugging(BaseLayer):
   '''\
   This model is only used during development.
   '''
-
 
   def build(self, input_shape):
     ''' Defines the net '''
