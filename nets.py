@@ -61,6 +61,10 @@ class CycleGAN(BaseLayer):
     fake_B = self.generator_AB(images_A)
     fake_A = self.generator_BA(images_B)
 
+    # Rename outputs
+    fake_A = tf.identity(fake_A, name='fake_A')
+    fake_B = tf.identity(fake_B, name='fake_B')
+
     # Decisions (logits)
     all_for_A = tf.concat((images_A, fake_A), axis=0, name='all_A')
     decision_A = self.discriminator_A(all_for_A)
@@ -73,21 +77,18 @@ class CycleGAN(BaseLayer):
     discriminator_B_loss = self.discriminator_loss(decision_B)
 
     # Generator GAN loss
-    generator_A_loss = self.generator_loss(decision_A)
-    generator_B_loss = self.generator_loss(decision_B)
+    generator_AB_loss = self.generator_loss(decision_B)
+    generator_BA_loss = self.generator_loss(decision_A)
 
-    # Rename returns
+    # Returns
     outputs = (
-
-        tf.identity(fake_A, name='fake_A'),
-        tf.identity(fake_B, name='fake_B'),
-
+        fake_A,
+        fake_B,
         tf.identity(discriminator_A_loss, name='discriminator_A_loss'),
         tf.identity(discriminator_B_loss, name='discriminator_B_loss'),
-        tf.identity(generator_A_loss, name='generator_A_loss'),
-        tf.identity(generator_B_loss, name='generator_B_loss'),
+        tf.identity(generator_AB_loss, name='generator_AB_loss'),
+        tf.identity(generator_BA_loss, name='generator_BA_loss'),
       )
-
     return outputs
 
 

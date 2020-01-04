@@ -76,6 +76,10 @@ def train(args):
       if not args.epoch_steps else args.epoch_steps
   epochs = range(step_saver.epoch, args.epochs)
 
+  # Training tools
+  make_optmizer = lambda: tf.optimizers.Adam(args.rate)
+  trainer = models.CycleGAN_trainer(keras_model, make_optmizer)
+
   # Print job
   print('> Training.  Epochs:', epochs)
 
@@ -86,9 +90,8 @@ def train(args):
     for epoch_step in range(steps_per_epoch):
       print('> Step', step_saver.step, end='\r')
 
-      # TODO: train
-      inputs = next(train_dataset_it)
-      output = [None, None, 0,0,0,0]
+      # Train step
+      output = trainer.step(next(train_dataset_it))
 
       # Validation and log
       if step_saver.step % args.logs == 0 or epoch_step == steps_per_epoch-1:
@@ -123,15 +126,16 @@ def train(args):
                 step=step_saver.step)
 
         # Transform images for visualization
-        inputs = next(iter(one_image_dataset))
-        fake_A, fake_B, *_ = keras_model(inputs)
-        fake_A_viz = image_unnormalize(fake_A)
-        fake_B_viz = image_unnormalize(fake_B)
+        if args.images:
+          inputs = next(iter(one_image_dataset))
+          fake_A, fake_B, *_ = keras_model(inputs)
+          fake_A_viz = image_unnormalize(fake_A)
+          fake_B_viz = image_unnormalize(fake_B)
 
-        # Log images
-        with test_summary_writer.as_default():
-          tf.summary.image('fake_A', fake_A_viz, step=step_saver.step)
-          tf.summary.image('fake_B', fake_B_viz, step=step_saver.step)
+          # Log images
+          with test_summary_writer.as_default():
+            tf.summary.image('fake_A', fake_A_viz, step=step_saver.step)
+            tf.summary.image('fake_B', fake_B_viz, step=step_saver.step)
 
       # End step
       step_saver.new_step()
@@ -257,8 +261,10 @@ def main():
       help='Force a specific number of steps in each epoch')
   train_parser.add_argument('-l', '--logs', type=int, default=log_frequency,
       help='Save logs after this number of batches')
-  train_parser.add_argument('-c', '--continue', action='store_true', dest='cont',
-      help='Loads most recent saved model and resumes training.')
+  train_parser.add_argument('-c', '--continue', action='store_true',
+      dest='cont', help='Loads most recent saved model and resumes training.')
+  train_parser.add_argument('--no-images', dest='images', action='store_false',
+      help='Disable image saving in TensorBoard.')
 
   # Use op
   use_parser = op_parsers.add_parser('use',
