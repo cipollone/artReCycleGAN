@@ -115,9 +115,16 @@ def _make_layer(name, function):
   def call(self, inputs, **kwargs):
     ''' Layer call method '''
 
+    # Collect args
     defaults = self._function_bound_args.arguments
     kwargs.pop('training', None)
-    return self._function(inputs, **defaults, **kwargs)
+    
+    # Merge args
+    args = dict(defaults)
+    args.update(kwargs)
+
+    # Run
+    return self._function(inputs, **args)
 
   # Define layer
   LayerClass = type(name, (BaseLayer,), { '__init__': __init__, 'call': call })

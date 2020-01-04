@@ -57,7 +57,8 @@ def get_model_metrics(outputs):
 
 
 @tf.function
-def compute_model_metrics(keras_model, test_dataset, metrics_mean):
+def compute_model_metrics(keras_model, test_dataset, metrics_mean,
+    max_steps=None):
   '''\
   Model valuation on the test set. 
   Averages all metrics on the test set and return them.
@@ -67,9 +68,12 @@ def compute_model_metrics(keras_model, test_dataset, metrics_mean):
     test_dataset: dataset of inputs for validation
     metrics_mean: dict of tensorflow metrics to update (usually Mean).
       Computed metrics are updated here.
+    max_steps: max number of batches to process (None means "until the end of 
+      the dataset).
   Returns:
     dict. name: metric value
   '''
+  i = 0
 
   # Evaluate on test set
   for test_batch in test_dataset:
@@ -81,6 +85,9 @@ def compute_model_metrics(keras_model, test_dataset, metrics_mean):
     # Accumulate
     for name in metrics_mean:
       metrics_mean[name].update_state(metrics[name])
+
+    i += 1
+    if max_steps and i == max_steps: break
 
 
 class CycleGAN_trainer:

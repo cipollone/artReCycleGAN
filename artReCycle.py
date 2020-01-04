@@ -45,10 +45,10 @@ def train(args):
       shape=image_shape, batch=args.batch)
   test_dataset, test_size = data.load_pair(*args.datasets, 'test',
       shape=image_shape, batch=args.batch)
-  one_image_dataset, _ = data.load_pair(*args.datasets, 'test',
-      shape=image_shape, batch=1)
 
   train_dataset_it = iter(train_dataset)
+  test_samples = [data.load_few(name, 'train', image_shape, 1) \
+      for name in args.datasets]
 
   # Define keras model
   keras_model = models.define_model(image_shape)
@@ -104,10 +104,13 @@ def train(args):
   
         # Evaluate on test set
         models.compute_model_metrics(keras_model, test_dataset,
-            test_metrics_mean)
+            test_metrics_mean, max_steps=args.val_steps)
 
-        # All metrics
         train_metrics = models.get_model_metrics(output)
+
+        # Dict format
+        train_metrics = {name: train_metrics[name].numpy() \
+            for name in train_metrics}
         test_metrics = {name: test_metrics_mean[name].result().numpy() \
             for name in test_metrics_mean}
 
@@ -127,8 +130,7 @@ def train(args):
 
         # Transform images for visualization
         if args.images:
-          inputs = next(iter(one_image_dataset))
-          fake_A, fake_B, *_ = keras_model(inputs)
+          fake_A, fake_B, *_ = keras_model(test_samples)
           fake_A_viz = image_unnormalize(fake_A)
           fake_B_viz = image_unnormalize(fake_B)
 
@@ -265,6 +267,8 @@ def main():
       dest='cont', help='Loads most recent saved model and resumes training.')
   train_parser.add_argument('--no-images', dest='images', action='store_false',
       help='Disable image saving in TensorBoard.')
+  train_parser.add_argument('--val-steps', type=int, default=None,
+      help='Maximum number of batches for validation.')
 
   # Use op
   use_parser = op_parsers.add_parser('use',

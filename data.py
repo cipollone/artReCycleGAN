@@ -124,7 +124,7 @@ def decode_image(path, out_shape):
   return img
 
 
-def load(name, split, shape=(300, 300, 3), batch=None):
+def load(name, split, shape=(300, 300, 3), batch=None, shuffle=True):
   '''\
   Returns a Dataset. The dataset is already transformed to create the input
   pipeline.
@@ -134,6 +134,7 @@ def load(name, split, shape=(300, 300, 3), batch=None):
     split: 'train' or 'test'
     shape: desired shape of each image
     batch: how many samples to return. If None, the entire dataset is returned.
+    shuffle: set to false if shuffling is not necessary.
 
   Returns:
     Tf Dataset, dataset size
@@ -156,10 +157,15 @@ def load(name, split, shape=(300, 300, 3), batch=None):
   if not batch or batch < 1 or batch > size :
     batch = size
 
-  # Input pipeline
+  # Set the pipeline
+  repeat = False
   if split == 'train':
-    images = images.shuffle(min(size, 10000))
-    images = images.repeat()
+    shuffle = True
+    repeat = True
+
+  # Input pipeline
+  if shuffle: images = images.shuffle(min(size, 10000))
+  if repeat: images = images.repeat()
   images = images.map(load_image \
       if not classification else load_labelled_image,
       num_parallel_calls=tf.data.experimental.AUTOTUNE)
@@ -179,3 +185,34 @@ def load_pair(name_A, name_B, split, **kwargs):
   size = (size_A + size_B) / 2
 
   return tf.data.Dataset.zip((dataset_A, dataset_B)), size
+
+
+def load_few(name, split, shape, n):
+  '''\
+  It may be useful to print just few images for visualization.
+  These images shouldn't change. This function returns few samples from the
+  required dataset.
+  Args:
+    name: a dataset name
+    split: 'train' or 'test'
+    shape: desired shape of each image
+    n: number of images
+  Returns:
+    Images as a 4D tensor
+  '''
+
+  # Decode paths
+  paths, size = _dataset_files(name, split)
+  paths = [path.numpy() for path in paths]
+
+  if size < n:
+    raise RuntimeError(name + ' (' + split + ') does not contain ' + str(n) +
+        ' images.')
+
+  # Select n among all
+  offset = int((size-n)/2)
+  paths = paths[offset:offset+n]
+
+  # Load all
+  images = [decode_image(path, shape) for path in paths]
+  return images
