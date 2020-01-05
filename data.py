@@ -215,4 +215,4 @@ def load_few(name, split, shape, n):
 
   # Load all
   images = [decode_image(path, shape) for path in paths]
-  return images
+  return tf.convert_to_tensor(images)

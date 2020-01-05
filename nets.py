@@ -25,6 +25,10 @@ class CycleGAN(BaseLayer):
   Inputs are batch of images from both datasets.
   '''
 
+  # Cycle consistency loss multiplier
+  k_cycle = 10
+
+
   def build(self, input_shape):
     ''' Defines the net. '''
 
@@ -40,8 +44,11 @@ class CycleGAN(BaseLayer):
     self.discriminator_B = Discriminator(name='Discriminator_B')
 
     # Losses
-    self.discriminator_loss = DiscriminatorLoss()
-    self.generator_loss = GeneratorLoss()
+    self.discriminator_GAN_loss = DiscriminatorGANLoss()
+
+    self.generator_GAN_loss = GeneratorGANLoss()
+    self.generator_cycle_loss = GeneratorCycleLoss()
+    self.generator_identity_loss = GeneratorIdentityLoss()
 
     # Super
     BaseLayer.build(self, input_shape)
@@ -61,7 +68,6 @@ class CycleGAN(BaseLayer):
     fake_B = self.generator_AB(images_A)
     fake_A = self.generator_BA(images_B)
 
-    # Rename outputs
     fake_A = tf.identity(fake_A, name='fake_A')
     fake_B = tf.identity(fake_B, name='fake_B')
 
@@ -72,13 +78,34 @@ class CycleGAN(BaseLayer):
     all_for_B = tf.concat((images_B, fake_B), axis=0, name='all_B')
     decision_B = self.discriminator_B(all_for_B)
 
-    # Discriminator GAN loss
-    discriminator_A_loss = self.discriminator_loss(decision_A)
-    discriminator_B_loss = self.discriminator_loss(decision_B)
+    # Backward transforms
+    cycled_B = self.generator_AB(fake_A)
+    cycled_A = self.generator_BA(fake_B)
 
-    # Generator GAN loss
-    generator_AB_loss = self.generator_loss(decision_B)
-    generator_BA_loss = self.generator_loss(decision_A)
+    cycled_A = tf.identity(cycled_A, name='cycled_A')
+    cycled_B = tf.identity(cycled_B, name='cycled_B')
+
+    # Identity transforms
+    identities_B = self.generator_AB(images_B)
+    identities_A = self.generator_BA(images_A)
+
+    # Discriminator loss
+    discriminator_A_loss = self.discriminator_GAN_loss(decision_A)
+    discriminator_B_loss = self.discriminator_GAN_loss(decision_B)
+
+    # Generator loss
+    k_cycle, k_id = self.k_cycle, self.k_cycle/2
+
+    generator_AB_loss = (
+        self.generator_GAN_loss(decision_B) +
+        self.generator_cycle_loss((images_A, cycled_A)) * k_cycle +
+        self.generator_identity_loss((identities_B, images_B)) * k_id
+      )
+    generator_BA_loss = (
+        self.generator_GAN_loss(decision_A) +
+        self.generator_cycle_loss((images_B, cycled_B)) * k_cycle +
+        self.generator_identity_loss((identities_A, images_A)) * k_id
+      )
 
     # Returns
     outputs = (

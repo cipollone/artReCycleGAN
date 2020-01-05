@@ -154,6 +154,26 @@ def use(args):
     args: namespace of arguments. Run 'artRecycle use --help' for info.
   '''
 
+  # Model name and paths
+  model_name = '{}|{}'.format(*args.datasets)
+  model_path, log_path, logs_path = _prepare_directories(
+      model_name, resume=True)
+
+  model_json = os.path.join(model_path, 'keras.json')
+  model_checkpoint = os.path.join(model_path, 'model')
+
+  # Define dataset
+  image_shape = (300, 300, 3)
+  test_dataset, test_size = data.load_pair(*args.datasets, 'test',
+      shape=image_shape, batch=args.batch)
+
+  # Define keras model
+  keras_model = models.define_model(image_shape)
+
+  # Load
+  keras_model.load_weights(model_checkpoint)
+  print('> Weights loaded')
+
   raise NotImplementedError()
 
 

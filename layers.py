@@ -464,8 +464,8 @@ def pad_reflection(inputs, pad):
   return inputs
 
 
-@layerize('DiscriminatorLoss', globals())
-def discriminator_loss(inputs):
+@layerize('DiscriminatorGANLoss', globals())
+def discriminator_GAN_loss(inputs):
   '''\
   Returns the GAN loss associated to the Discriminator.
   True images must be classified as ones, generated as zeroes.
@@ -490,8 +490,8 @@ def discriminator_loss(inputs):
   return mse
 
 
-@layerize('GeneratorLoss', globals())
-def generator_loss(inputs):
+@layerize('GeneratorGANLoss', globals())
+def generator_GAN_loss(inputs):
   '''\
   Returns the GAN loss associated to the Generator.
   The goal of the generator is to trick the discriminator on the generated
@@ -512,6 +512,51 @@ def generator_loss(inputs):
   # Mse
   mse = tf.reduce_mean( tf.math.squared_difference(false_prob, 1) )
   return mse
+
+
+@layerize('L1Loss', globals())
+def l1_loss(inputs):
+  '''\
+  Computes the L1 loss between two sets of images.
+  Args:
+    inputs: a pair of batches of images.
+  Returns:
+    a scalar loss
+  '''
+
+  img1, img2 = inputs
+  l1 = tf.math.abs(img1 - img2)
+  return tf.reduce_mean(l1)
+
+
+@layerize('GeneratorCycleLoss', globals())
+def generator_cycle_loss(inputs):
+  '''\
+  Returns the Cycle consistency loss for pairs of images.
+  Simply, an L1 loss on each pair.
+  Args:
+    inputs: a pair of batches of images (the first should be original images,
+      the second are reconstructed ones).
+  Returns:
+    a scalar loss
+  '''
+
+  return l1_loss(inputs)
+
+
+@layerize('GeneratorIdentityLoss', globals())
+def generator_identity_loss(inputs):
+  '''\
+  Returns the identity loss for pairs of images.
+  Simply, an L1 loss on each pair.
+  Args:
+    inputs: a pair of batches of images (the first target images,
+      the second should be transformed images).
+  Returns:
+    a scalar loss
+  '''
+
+  return l1_loss(inputs)
 
 
 @layerize('ImageUnnormalize', globals())
