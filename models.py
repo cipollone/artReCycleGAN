@@ -56,38 +56,62 @@ def get_model_metrics(outputs):
   return metrics
 
 
-@tf.function
-def compute_model_metrics(keras_model, test_dataset, metrics_mean,
-    max_steps=None):
+class CycleGAN_tester:
   '''\
-  Model valuation on the test set. 
-  Averages all metrics on the test set and return them.
-  Accumulate metrics for each output.
+  Tests the CycleGAN model.
   Args:
-    keras_model: model to valuate
-    test_dataset: dataset of inputs for validation
-    metrics_mean: dict of tensorflow metrics to update (usually Mean).
-      Computed metrics are updated here.
-    max_steps: max number of batches to process (None means "until the end of 
-      the dataset).
-  Returns:
-    dict. name: metric value
+    cgan_model: CycleGAN keras model to train
+    optimizer: a callable that creates an optimizer
   '''
-  i = 0
 
-  # Evaluate on test set
-  for test_batch in test_dataset:
+  def __init__(self, cgan_model):
+
+    # Store
+    self.cgan = cgan_model
+
+    # Initialize metrics
+    metrics_names = get_model_metrics(None)
+    self.metrics_mean = {name: tf.metrics.Mean(name) for name in metrics_names}
+
+
+  def step(self, input_batch):
+    '''\
+    One evaluation step for CycleGAN.
+    Args:
+      input_batch: training batch (pair of batches of images, in this case)
+    Returns:
+      outputs of the model
+    '''
+
+    _cycleGAN_tester_step(self.cgan, self.metrics_mean, input_batch)
+
+
+  def result(self):
+    '''\
+    Returns the result of last evaluation steps and clears the accumulators.
+    '''
+
+    # Collect
+    metrics_val = {name: self.metrics_mean[name].result().numpy() \
+        for name in self.metrics_mean}
+
+    # Reset
+    for name in self.metrics_mean:
+      self.metrics_mean[name].reset_states()
+
+    return metrics_val
+
+
+@tf.function
+def _cycleGAN_tester_step(cgan, metrics_mean, input_batch):
 
     # Compute
-    outputs = keras_model(test_batch)
+    outputs = cgan(input_batch)
     metrics = get_model_metrics(outputs)
 
     # Accumulate
     for name in metrics_mean:
       metrics_mean[name].update_state(metrics[name])
-
-    i += 1
-    if max_steps and i == max_steps: break
 
 
 class CycleGAN_trainer:

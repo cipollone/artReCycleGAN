@@ -47,6 +47,7 @@ def train(args):
       shape=image_shape, batch=args.batch)
 
   train_dataset_it = iter(train_dataset)
+  test_dataset_it = iter(test_dataset)
   test_samples = [data.load_few(name, 'train', image_shape, 1) \
       for name in args.datasets]
 
@@ -79,6 +80,7 @@ def train(args):
   # Training tools
   make_optmizer = lambda: tf.optimizers.Adam(args.rate)
   trainer = models.CycleGAN_trainer(keras_model, make_optmizer)
+  tester = models.CycleGAN_tester(keras_model)
 
   # Print job
   print('> Training.  Epochs:', epochs)
@@ -97,22 +99,15 @@ def train(args):
       if step_saver.step % args.logs == 0 or epoch_step == steps_per_epoch-1:
         print('\n> Validation')
 
-        # Accumulators
-        metrics_names = models.get_model_metrics(None)
-        test_metrics_mean = {name: tf.metrics.Mean(name) \
-            for name in metrics_names}
-  
         # Evaluate on test set
-        models.compute_model_metrics(keras_model, test_dataset,
-            test_metrics_mean, max_steps=args.val_steps)
-
-        train_metrics = models.get_model_metrics(output)
+        for i in range(args.val_steps):
+          tester.step(next(test_dataset_it))
 
         # Dict format
+        train_metrics = models.get_model_metrics(output)
         train_metrics = {name: train_metrics[name].numpy() \
             for name in train_metrics}
-        test_metrics = {name: test_metrics_mean[name].result().numpy() \
-            for name in test_metrics_mean}
+        test_metrics = tester.result()
 
         # Log in console
         print('  Train metrics:', train_metrics)
@@ -259,6 +254,7 @@ def main():
   learning_rate = 0.001
   epochs = 1
   log_frequency = 1
+  val_steps = 1
 
   # Datasets
   datasets_names = {name for name in data.datasets}
@@ -285,10 +281,10 @@ def main():
       help='Save logs after this number of batches')
   train_parser.add_argument('-c', '--continue', action='store_true',
       dest='cont', help='Loads most recent saved model and resumes training.')
+  train_parser.add_argument('-v', '--val-steps', type=int, default=val_steps,
+      help='Number of batches to use for validation.')
   train_parser.add_argument('--no-images', dest='images', action='store_false',
       help='Disable image saving in TensorBoard.')
-  train_parser.add_argument('--val-steps', type=int, default=None,
-      help='Maximum number of batches for validation.')
 
   # Use op
   use_parser = op_parsers.add_parser('use',

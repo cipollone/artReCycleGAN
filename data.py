@@ -157,15 +157,9 @@ def load(name, split, shape=(300, 300, 3), batch=None, shuffle=True):
   if not batch or batch < 1 or batch > size :
     batch = size
 
-  # Set the pipeline
-  repeat = False
-  if split == 'train':
-    shuffle = True
-    repeat = True
-
   # Input pipeline
   if shuffle: images = images.shuffle(min(size, 10000))
-  if repeat: images = images.repeat()
+  images = images.repeat()
   images = images.map(load_image \
       if not classification else load_labelled_image,
       num_parallel_calls=tf.data.experimental.AUTOTUNE)
