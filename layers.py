@@ -18,8 +18,6 @@ class BaseLayer(layers.Layer):
       can simply push to this list without defining call().
     - self.layer_options can be filled with subclasses' constructor arguments,
       without the need of defining get_config().
-    - self.compile_defaults is a dict of compile options, useful when this
-      layer is used as the outer block in a keras model.
   '''
 
   # Number all layers. Map classes to count
@@ -50,7 +48,6 @@ class BaseLayer(layers.Layer):
     defaults = {
         'layers_stack': [],        # Empty layer list
         'layer_options': {},       # No options
-        'compile_defaults': {},    # No compilation options
       }
     for key in defaults:
       if not hasattr(self, key):
@@ -118,9 +115,16 @@ def _make_layer(name, function):
   def call(self, inputs, **kwargs):
     ''' Layer call method '''
 
+    # Collect args
     defaults = self._function_bound_args.arguments
     kwargs.pop('training', None)
-    return self._function(inputs, **defaults, **kwargs)
+    
+    # Merge args
+    args = dict(defaults)
+    args.update(kwargs)
+
+    # Run
+    return self._function(inputs, **args)
 
   # Define layer
   LayerClass = type(name, (BaseLayer,), { '__init__': __init__, 'call': call })
@@ -508,6 +512,16 @@ def generator_loss(inputs):
   # Mse
   mse = tf.reduce_mean( tf.math.squared_difference(false_prob, 1) )
   return mse
+
+
+@layerize('ImageUnnormalize', globals())
+def image_unnormalize(inputs):
+  '''\
+  Scales a batch of images from [-1,1] to [0,255].
+  '''
+
+  return ((inputs + 1) * 127.5)
+
 
 
 class BinaryAccuracyFromLogits(tf.keras.metrics.Metric):

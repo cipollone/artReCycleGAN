@@ -13,7 +13,172 @@ import tensorflow as tf
 
 import data
 import models
+from layers import image_unnormalize
 from customizations import *
+
+
+def train(args):
+  '''\
+  Training function.
+
+  Args:
+    args: namespace of arguments. Run 'artRecycle train --help' for info.
+  '''
+
+  # Model name and paths
+  model_name = '{}|{}'.format(*args.datasets)
+  model_path, log_path, logs_path = _prepare_directories(
+      model_name, resume=args.cont)
+
+  model_json = os.path.join(model_path, 'keras.json')
+  model_checkpoint = os.path.join(model_path, 'model')
+
+  # Summary writers
+  train_summary_writer = tf.summary.create_file_writer(
+      os.path.join(log_path, 'train'))
+  test_summary_writer = tf.summary.create_file_writer(
+      os.path.join(log_path, 'test'))
+
+  # Define datasets
+  image_shape = (300, 300, 3)
+  train_dataset, train_size = data.load_pair(*args.datasets, 'train',
+      shape=image_shape, batch=args.batch)
+  test_dataset, test_size = data.load_pair(*args.datasets, 'test',
+      shape=image_shape, batch=args.batch)
+
+  train_dataset_it = iter(train_dataset)
+  test_samples = [data.load_few(name, 'train', image_shape, 1) \
+      for name in args.datasets]
+
+  # Define keras model
+  keras_model = models.define_model(image_shape)
+
+  # Save keras model
+  keras_json = keras_model.to_json()
+  keras_json = json.dumps(json.loads(keras_json), indent=2)
+  with open(model_json, 'w') as f:
+    f.write(keras_json)
+
+  # Save TensorBoard graph
+  if not args.cont:
+    tbCallback = tf.keras.callbacks.TensorBoard(log_path, write_graph=True)
+    tbCallback.set_model(keras_model)
+
+  # Resuming
+  if args.cont:
+    keras_model.load_weights(model_checkpoint)
+    print('> Weights loaded')
+
+  # Training steps
+  step_saver = CountersSaver(log_dir=logs_path, log_every=args.logs)
+
+  steps_per_epoch = int(train_size/args.batch) \
+      if not args.epoch_steps else args.epoch_steps
+  epochs = range(step_saver.epoch, args.epochs)
+
+  # Training tools
+  make_optmizer = lambda: tf.optimizers.Adam(args.rate)
+  trainer = models.CycleGAN_trainer(keras_model, make_optmizer)
+
+  # Print job
+  print('> Training.  Epochs:', epochs)
+
+  # Training loop
+  for epoch in epochs:
+    print('> Epoch', step_saver.epoch)
+
+    for epoch_step in range(steps_per_epoch):
+      print('> Step', step_saver.step, end='\r')
+
+      # Train step
+      output = trainer.step(next(train_dataset_it))
+
+      # Validation and log
+      if step_saver.step % args.logs == 0 or epoch_step == steps_per_epoch-1:
+        print('\n> Validation')
+
+        # Accumulators
+        metrics_names = models.get_model_metrics(None)
+        test_metrics_mean = {name: tf.metrics.Mean(name) \
+            for name in metrics_names}
+  
+        # Evaluate on test set
+        models.compute_model_metrics(keras_model, test_dataset,
+            test_metrics_mean, max_steps=args.val_steps)
+
+        train_metrics = models.get_model_metrics(output)
+
+        # Dict format
+        train_metrics = {name: train_metrics[name].numpy() \
+            for name in train_metrics}
+        test_metrics = {name: test_metrics_mean[name].result().numpy() \
+            for name in test_metrics_mean}
+
+        # Log in console
+        print('  Train metrics:', train_metrics)
+        print('  Test metrics:', test_metrics)
+
+        # Log in TensorBoard
+        with train_summary_writer.as_default():
+          for metric in train_metrics:
+            tf.summary.scalar(metric, train_metrics[metric],
+                step=step_saver.step)
+        with test_summary_writer.as_default():
+          for metric in test_metrics:
+            tf.summary.scalar(metric, test_metrics[metric],
+                step=step_saver.step)
+
+        # Transform images for visualization
+        if args.images:
+          fake_A, fake_B, *_ = keras_model(test_samples)
+          fake_A_viz = image_unnormalize(fake_A)
+          fake_B_viz = image_unnormalize(fake_B)
+
+          # Log images
+          with test_summary_writer.as_default():
+            tf.summary.image('fake_A', fake_A_viz, step=step_saver.step)
+            tf.summary.image('fake_B', fake_B_viz, step=step_saver.step)
+
+      # End step
+      step_saver.new_step()
+
+    # End epoch
+    step_saver.new_epoch()
+
+
+def use(args):
+  '''\
+  Transform images with the net.
+
+  Args:
+    args: namespace of arguments. Run 'artRecycle use --help' for info.
+  '''
+
+  raise NotImplementedError()
+
+
+def debug(args):
+  '''\
+  Debugging function.
+
+  Args:
+    args: namespace of arguments. Run --help for info.
+  '''
+  import matplotlib.pyplot as plt
+
+  print('> Debug')
+
+  # Saving the Tensorboard graph without training
+
+  # Model
+  image_shape = (300, 300, 3)
+  keras_model = models.define_model(image_shape)
+
+  keras_model.summary()
+
+  # TensorBoard callback writer
+  tbCallback = tf.keras.callbacks.TensorBoard('debug', write_graph=True)
+  tbCallback.set_model(keras_model)
 
 
 def _prepare_directories(model_name, resume=False):
@@ -64,121 +229,6 @@ def _prepare_directories(model_name, resume=False):
   return (model_path, log_path, logs_path)
 
 
-def train(args):
-  '''\
-  Training function.
-
-  Args:
-    args: namespace of arguments. Run 'artRecycle train --help' for info.
-  '''
-
-  # Model name and paths
-  model_name = '{}|{}'.format(*args.datasets)
-  model_path, log_path, logs_path = _prepare_directories(
-      model_name, resume=args.cont)
-
-  model_json = os.path.join(model_path, 'keras.json')
-  model_checkpoint = os.path.join(model_path, 'model')
-
-  # Define datasets
-  image_shape = (300, 300, 3)
-  train_dataset, train_size = data.load('classes', 'train',
-      shape=image_shape, batch=args.batch)
-  test_dataset, test_size = data.load('classes', 'test',
-      shape=image_shape, batch=args.batch)
-
-  # Define keras model
-  keras_model, compile_options = models.define_model(image_shape)
-
-  # Save keras model
-  keras_json = keras_model.to_json()
-  keras_json = json.dumps(json.loads(keras_json), indent=2)
-  with open(model_json, 'w') as f:
-    f.write(keras_json)
-
-  # Compile options
-  compile_options.update({
-      'optimizer': tf.keras.optimizers.Adam(learning_rate=args.rate),
-    })
-
-  # Compile for loss, metrics etc
-  keras_model.compile(**compile_options)
-
-  # Resuming
-  if args.cont:
-    keras_model.load_weights(model_checkpoint)
-    print('> Weights loaded')
-
-  # Training settings
-  steps_per_epoch = int(train_size/args.batch) \
-      if not args.epoch_steps else args.epoch_steps
-
-  # Step saver
-  counter_saver_callback = CountersSaverCallback(logs_path)
-  step = counter_saver_callback.step
-  epoch = counter_saver_callback.epoch
-
-  # Callbacks
-  callbacks = [
-      tf.keras.callbacks.ModelCheckpoint(
-        filepath = model_checkpoint, monitor = 'loss', save_best_only = True,
-        mode = 'max', save_freq = 'epoch', save_weights_only = True
-      ),
-      TensorBoardWithStep(
-        initial_step = step,
-        log_dir = log_path,
-        write_graph = not args.cont,
-        update_freq = args.logs
-      ),
-      tf.keras.callbacks.TerminateOnNaN(),
-      counter_saver_callback
-    ]
-
-  # Train
-  keras_model.fit(train_dataset,
-      epochs = args.epochs,
-      steps_per_epoch = steps_per_epoch,
-      callbacks = callbacks,
-      initial_epoch = epoch,
-      shuffle = False,
-    )
-
-
-def use(args):
-  '''\
-  Transform images with the net.
-
-  Args:
-    args: namespace of arguments. Run 'artRecycle use --help' for info.
-  '''
-
-  raise NotImplementedError()
-
-
-def debug(args):
-  '''\
-  Debugging function.
-
-  Args:
-    args: namespace of arguments. Run --help for info.
-  '''
-  import matplotlib.pyplot as plt
-
-  print('> Debug')
-
-  # Saving the Tensorboard grpah without training
-
-  # Model
-  image_shape = (300, 300, 3)
-  keras_model, compile_options = models.define_model(image_shape)
-
-  keras_model.summary()
-
-  # TensorBoard callback writer
-  tbCallback = tf.keras.callbacks.TensorBoard('debug', write_graph=True)
-  tbCallback.set_model(keras_model)
-
-
 def main():
   '''\
   Main function. Called when this file is executed as script.
@@ -213,8 +263,12 @@ def main():
       help='Force a specific number of steps in each epoch')
   train_parser.add_argument('-l', '--logs', type=int, default=log_frequency,
       help='Save logs after this number of batches')
-  train_parser.add_argument('-c', '--continue', action='store_true', dest='cont',
-      help='Loads most recent saved model and resumes training.')
+  train_parser.add_argument('-c', '--continue', action='store_true',
+      dest='cont', help='Loads most recent saved model and resumes training.')
+  train_parser.add_argument('--no-images', dest='images', action='store_false',
+      help='Disable image saving in TensorBoard.')
+  train_parser.add_argument('--val-steps', type=int, default=None,
+      help='Maximum number of batches for validation.')
 
   # Use op
   use_parser = op_parsers.add_parser('use',

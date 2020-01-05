@@ -1,40 +1,27 @@
 '''\
-Networks definitions.
-Implementations for the CycleGAN model.
-Models are implemented as composite layers, too.
-
-Differences from the paper:
-  - Weights initialization
-  - Their implementation, not the paper, contains an additional convolution
-    layer before the last.
-  - Paper says that last activation is also a relu. Their implementation
-    contains a tanh instead.
-  - Other implementations than the original also add a relu activation
-    after the sum of the residual blocks (after skip connections).
+This module defines the CycleGAN model and provides the training step.
+define_model returns a keras model. However, this objects should not be
+compiled or fitted() with keras interface. Instead, use cycleGAN_step.
+All functions in this module depend on the type of model returned by
+define_model.
 '''
-# note: don't assign new properties to model: autograph interprets these as
-# layers. Be careful with name clashes with superclasses, such as _layers.
-
 
 import tensorflow as tf
-from tensorflow.keras import layers
 
-from layers import *
+import nets
 
 
 def define_model(image_shape):
   '''\
-  This method is used to select the model to use, so not to modify the main
-  training file.
-
+  Creates a CycleGAN model.
   Args:
-    image_shape: 3D tensor. Shape of each input image.
+    image_shape: 3D Shape of each input image.
   Returns:
-    keras model, and a dictionary of default options for compile().
+    keras model
   '''
 
   # Define
-  model_layer = CycleGAN()
+  model_layer = nets.CycleGAN()
 
   # Inputs are two batches of images from both datasets
   input_A = tf.keras.Input(shape=image_shape, name='Input_A')
@@ -46,205 +33,126 @@ def define_model(image_shape):
   keras_model = tf.keras.Model(inputs=inputs, outputs=outputs,
       name=model_layer.__class__.__name__)
 
-  return keras_model, model_layer.compile_defaults
+  return keras_model
 
 
-class CycleGAN(BaseLayer):
+def get_model_metrics(outputs):
   '''\
-  Full CycleGAN model.
-  Inputs are batch of images from both datasets.
+  Parses the output of the model and returns the associated metrics.
+  Args:
+    outputs: vector of output of the model. None is allowed to get just the
+      output names.
+  Returns:
+    dict that maps metric name to value
   '''
 
-  def build(self, input_shape):
-    ''' Defines the net. '''
+  if not outputs:
+    outputs = list((None for i in range(10)))
 
-    # Preprocessing
-    self.preprocessing = ImagePreprocessing(out_size=(256,256))
+  # Parse metrics
+  names = [None, None, 'dA_loss', 'dB_loss', 'gAB_loss', 'gBA_loss',]
+  metrics = {name: val for name, val in zip(names, outputs) if name}
 
-    # Discriminators
-    self.generator_AB = Generator(name='Generator_AB')
-    self.generator_BA = Generator(name='Generator_BA')
-
-    # Generators
-    self.discriminator_A = Discriminator(name='Discriminator_A')
-    self.discriminator_B = Discriminator(name='Discriminator_B')
-
-    # Super
-    BaseLayer.build(self, input_shape)
+  return metrics
 
 
-  def call(self, inputs):
-    ''' Forward pass '''
-
-    # Separate inputs of the two domains
-    images_A, images_B = inputs
-
-    # Image preprocessing
-    images_A = self.preprocessing(images_A)
-    images_B = self.preprocessing(images_B)
-
-    # Normal transform
-    fake_B = self.generator_AB(images_A)
-    fake_A = self.generator_BA(images_B)
-
-    # Decisions (logits)
-    all_for_A = tf.concat((images_A, fake_A), axis=0, name='all_A')
-    decision_A = self.discriminator_A(all_for_A)
-
-    all_for_B = tf.concat((images_B, fake_B), axis=0, name='all_B')
-    decision_B = self.discriminator_B(all_for_B)
-
-    # Rename returns
-    outputs = (
-        tf.identity(fake_B, name='fake_B'),
-        tf.identity(fake_A, name='fake_A'),
-        tf.identity(decision_A, name='decision_A'),
-        tf.identity(decision_B, name='decision_B'),
-      )
-
-    return outputs
-
-
-class Debugging(BaseLayer):
+@tf.function
+def compute_model_metrics(keras_model, test_dataset, metrics_mean,
+    max_steps=None):
   '''\
-  This model is only used during development.
+  Model valuation on the test set. 
+  Averages all metrics on the test set and return them.
+  Accumulate metrics for each output.
+  Args:
+    keras_model: model to valuate
+    test_dataset: dataset of inputs for validation
+    metrics_mean: dict of tensorflow metrics to update (usually Mean).
+      Computed metrics are updated here.
+    max_steps: max number of batches to process (None means "until the end of 
+      the dataset).
+  Returns:
+    dict. name: metric value
+  '''
+  i = 0
+
+  # Evaluate on test set
+  for test_batch in test_dataset:
+
+    # Compute
+    outputs = keras_model(test_batch)
+    metrics = get_model_metrics(outputs)
+
+    # Accumulate
+    for name in metrics_mean:
+      metrics_mean[name].update_state(metrics[name])
+
+    i += 1
+    if max_steps and i == max_steps: break
+
+
+class CycleGAN_trainer:
+  '''\
+  Trains the CycleGAN model.
+  Args:
+    cgan_model: CycleGAN keras model to train
+    optimizer: a callable that creates an optimizer
   '''
 
-  def build(self, input_shape):
-    ''' Defines the net '''
+  def __init__(self, cgan_model, optimizer):
 
-    # Def
-    self.layers_stack = [
+    # Store
+    self.cgan = cgan_model
+    cgan_layer = cgan_model.get_layer('CycleGAN')
 
-        ImagePreprocessing(out_size=(256,256)),
-        ResNetBlock(filters=3),
-        ResNetBlock(filters=3),
-        ReduceMean(),
-      ]
+    # Also save the parameters
+    self.params = {}
+    self.params['dA'] = cgan_layer.discriminator_A.trainable_variables
+    self.params['dB'] = cgan_layer.discriminator_B.trainable_variables
+    self.params['gAB'] = cgan_layer.generator_AB.trainable_variables
+    self.params['gBA'] = cgan_layer.generator_BA.trainable_variables
 
-    # Super
-    BaseLayer.build(self, input_shape)
-
-
-class Discriminator(BaseLayer):
-  '''\
-  Image discriminator in CycleGAN (PatchGAN).
-  Each block is a 2d convolution, instance normalization, and LeakyReLU
-  activation. The number of filter double each time, while the image size is
-  halved. The final output is a (sigmoid) map of classifications for
-  {true, false}. With a 256x256 image input, each pixel of the 16x16 output map
-  has 70x70 receptive field.
-
-  From a batch of input images, returns scalar logits for binary
-  classification.
-  '''
-
-  def build(self, input_shape):
-    ''' Defines the net. '''
-
-    # Parameters
-    filters = 64
-    Activation = lambda: layers.LeakyReLU(0.2)
-
-    # Input block
-    self.layers_stack += [
-        layers.Conv2D(filters=filters, kernel_size=4, strides=2,
-          padding='same'),
-        Activation(),
-      ]
-
-    # Other blocks
-    for i in range(3):
-
-      filters *= 2
-      self.layers_stack += [
-          layers.Conv2D(filters=filters, kernel_size=4, strides=2,
-            padding='same'),
-          InstanceNormalization(),
-          Activation(),
-        ]
-
-    # Output block
-    self.layers_stack += [
-        layers.Conv2D(filters=1, kernel_size=4, strides=1, padding='same'),
-        lambda x: tf.identity(x, name='logits'),
-      ]
-
-    # Built
-    BaseLayer.build(self, input_shape)
+    # Create optimizers
+    self.optimizers = {}
+    self.optimizers['dA'] = optimizer()
+    self.optimizers['dB'] = optimizer()
+    self.optimizers['gAB'] = optimizer()
+    self.optimizers['gBA'] = optimizer()
 
 
-class Generator(BaseLayer):
-  '''\
-  Image generator in CycleGAN. Transforms images from one domain to another.
-  The generator is composed of three parts: encoding, transformation,
-  deconding, which are respectively based on convolutional, resnet, and
-  convolutional transpose blocks. See paper for a more precise description.
-  '''
-
-  class Encoding(BaseLayer):
-    ''' Encoding phase of the generator '''
-
-    def build(self, input_shape):
-
-      # Def
-      self.layers_stack = [
-
-          GeneralConvBlock( filters=64, kernel_size=7, stride=1, pad=3 ),
-          GeneralConvBlock( filters=128, kernel_size=3, stride=2, pad='same' ),
-          GeneralConvBlock( filters=256, kernel_size=3, stride=2, pad='same' ),
-        ]
-
-      # Super
-      BaseLayer.build(self, input_shape)
+  def step(self, input_batch):
+    '''\
+    One training step for CycleGAN.
+    Args:
+      input_batch: training batch (pair of batches of images, in this case)
+    Returns:
+      outputs of the model
+    '''
+    return _cycleGAN_trainer_step(self.cgan, self.params, self.optimizers,
+        input_batch)
 
 
-  class Transformation(BaseLayer):
-    ''' Transformation phase of the generator '''
+@tf.function
+def _cycleGAN_trainer_step(cgan, params, optimizers, input_batch):
+  ''' This can't be in CycleGAN_trainer due to @tf.function '''
 
-    resnet_blocks = 9
+  # Record operations in forward step
+  with tf.GradientTape(persistent=True) as tape:
+    outputs = cgan(input_batch)
+    
+  # Parse losses
+  losses = get_model_metrics(outputs)
 
-    def build(self, input_shape):
+  # Compute gradients
+  gradient_dA = tape.gradient(losses['dA_loss'], params['dA'])
+  gradient_dB = tape.gradient(losses['dB_loss'], params['dB'])
+  gradient_gAB = tape.gradient(losses['gAB_loss'], params['gAB'])
+  gradient_gBA = tape.gradient(losses['gBA_loss'], params['gBA'])
 
-      # Def
-      for i in range(self.resnet_blocks):
-        self.layers_stack.append( ResNetBlock( filters=256 ) )
+  # Step
+  optimizers['dA'].apply_gradients(zip(gradient_dA, params['dA']))
+  optimizers['dB'].apply_gradients(zip(gradient_dB, params['dB']))
+  optimizers['gAB'].apply_gradients(zip(gradient_gAB, params['gAB']))
+  optimizers['gBA'].apply_gradients(zip(gradient_gBA, params['gBA']))
 
-      # Super
-      BaseLayer.build(self, input_shape)
-
-
-  class Decoding(BaseLayer):
-    ''' Decoding phase of the generator '''
-
-    def build(self, input_shape):
-
-      # Def
-      self.layers_stack = [
-
-          GeneralConvTransposeBlock( filters=128, kernel_size=3, stride=2 ),
-          GeneralConvTransposeBlock( filters=64, kernel_size=3, stride=2 ),
-          GeneralConvBlock( filters=3, kernel_size=7, stride=1, pad=3,
-              activation=False ),
-          tf.keras.activations.tanh,
-        ]
-
-      # Super
-      BaseLayer.build(self, input_shape)
-
-
-  # Generator
-  def build(self, input_shape):
-    ''' Defines the net '''
-
-    # Def
-    self.layers_stack = [
-
-        Generator.Encoding(),
-        Generator.Transformation(),
-        Generator.Decoding(),
-      ]
-
-    # Super
-    BaseLayer.build(self, input_shape)
+  return outputs
 
