@@ -81,6 +81,7 @@ def train(args):
   make_optmizer = lambda: tf.optimizers.Adam(args.rate)
   trainer = models.CycleGAN_trainer(keras_model, make_optmizer)
   tester = models.CycleGAN_tester(keras_model)
+  saver = CheckpointSaver(keras_model, model_checkpoint)
 
   # Print job
   print('> Training.  Epochs:', epochs)
@@ -122,6 +123,14 @@ def train(args):
           for metric in test_metrics:
             tf.summary.scalar(metric, test_metrics[metric],
                 step=step_saver.step)
+
+        # Save weigths
+        loss = 0
+        for m in test_metrics.values():
+          loss += m
+        saved = saver.save(score = -loss)
+        if saved:
+          print('Weigths saved')
 
         # Transform images for visualization
         if args.images:

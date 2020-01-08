@@ -562,10 +562,10 @@ def generator_identity_loss(inputs):
 @layerize('ImageUnnormalize', globals())
 def image_unnormalize(inputs):
   '''\
-  Scales a batch of images from [-1,1] to [0,255].
+  Scales a batch of images from [-1,1] to [0,1]. Useful for visualization.
   '''
 
-  return ((inputs + 1) * 127.5)
+  return ((inputs+1)/2)
 
 
 

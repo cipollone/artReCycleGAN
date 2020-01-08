@@ -61,3 +61,36 @@ class CountersSaver:
     with open(self._filename, 'w') as f:
       f.write('epoch, step\n')
       f.write('{}, {}\n'.format(self.epoch, self.step))
+
+
+class CheckpointSaver:
+  ''' Saves checkpoints '''
+
+  def __init__(self, model, path):
+    ''' Saves Keras model to path as checkpoint file.  '''
+
+    self.path = path
+    self.model = model
+    self.score = float('-inf')
+
+
+  def save(self, score=None):
+    '''\
+    Args:
+      score: if provided, only save if score is higher than last saved score.
+        If None, always save.
+    Returns:
+      true when the model is saved
+    '''
+
+    # Return if not best
+    if not score is None:
+      if score < self.score:
+        return False
+      else:
+        self.score = score
+
+    # Save
+    self.model.save_weights(self.path, overwrite=True, save_format='tf')
+
+    return True
