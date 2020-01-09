@@ -74,8 +74,8 @@ def train(args):
 
   # Training tools
   make_optmizer = lambda: tf.optimizers.Adam(args.rate)
-  trainer = models.CycleGAN_trainer(keras_model, make_optmizer)
-  tester = models.CycleGAN_tester(keras_model)
+  trainer = models.Trainer(keras_model, make_optmizer)
+  tester = models.Tester(keras_model)
   saver = CheckpointSaver(keras_model, model_checkpoint)
 
   # Print job

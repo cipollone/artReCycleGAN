@@ -11,6 +11,7 @@ Differences from the paper:
     contains a tanh instead.
   - Other implementations than the original also add a relu activation
     after the sum of the residual blocks (after skip connections).
+  - Not training discriminators on a buffer of images.
 '''
 
 import tensorflow as tf
@@ -35,11 +36,11 @@ class CycleGAN(BaseLayer):
     # Preprocessing
     self.preprocessing = ImagePreprocessing(out_size=(256,256))
 
-    # Discriminators
+    # Generators
     self.generator_AB = Generator(name='Generator_AB')
     self.generator_BA = Generator(name='Generator_BA')
 
-    # Generators
+    # Discriminators
     self.discriminator_A = Discriminator(name='Discriminator_A')
     self.discriminator_B = Discriminator(name='Discriminator_B')
 
@@ -127,16 +128,44 @@ class Debugging(BaseLayer):
   def build(self, input_shape):
     ''' Defines the net '''
 
-    # Def
-    self.layers_stack = [
+    # Preprocessing
+    self.preprocessing = ImagePreprocessing(out_size=(256,256))
 
-        ImagePreprocessing(out_size=(256,256)),
-        Discriminator(),
-        ReduceMean(),
-      ]
+    # Generators
+    self.generator_BA = Generator(name='Generator_BA')
+
+    # Losses
+    self.generator_identity_loss = GeneratorIdentityLoss()
 
     # Super
     BaseLayer.build(self, input_shape)
+
+
+  def call(self, inputs):
+    ''' Forward pass '''
+
+    # Separate inputs of the two domains
+    images_A, images_B = inputs
+
+    # Image preprocessing
+    images_A = self.preprocessing(images_A)
+
+    # Normal transform
+    fake_A = self.generator_BA(images_A)
+
+    fake_A = tf.identity(fake_A, name='fake_A')
+
+    generator_BA_loss = (
+        self.generator_identity_loss((fake_A, images_A))
+      )
+
+    # Returns
+    outputs = (
+        images_A,
+        fake_A,
+        tf.identity(generator_BA_loss, name='generator_BA_loss'),
+      )
+    return outputs
 
 
 class Discriminator(BaseLayer):

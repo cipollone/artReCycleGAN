@@ -11,17 +11,22 @@ import tensorflow as tf
 import nets
 
 
+def _set_model():
+  ''' This sets the global model used in this layer. Called at the end. '''
+
+  global Model, Trainer, model_metrics
+
+  Model = nets.Debugging
+  Trainer = Debug_trainer
+  model_metrics = [None, None, 'gBA_loss',]
+  #model_metrics = [None, None, 'dA_loss', 'dB_loss', 'gAB_loss', 'gBA_loss',]
+
+
 def define_model(image_shape):
-  '''\
-  Creates a CycleGAN model.
-  Args:
-    image_shape: 3D Shape of each input image.
-  Returns:
-    keras model
-  '''
+  ''' Creates the model '''
 
   # Define
-  model_layer = nets.CycleGAN()
+  model_layer = Model()
 
   # Inputs are two batches of images from both datasets
   input_A = tf.keras.Input(shape=image_shape, name='Input_A')
@@ -50,24 +55,23 @@ def get_model_metrics(outputs):
     outputs = list((None for i in range(10)))
 
   # Parse metrics
-  names = [None, None, 'dA_loss', 'dB_loss', 'gAB_loss', 'gBA_loss',]
+  names = model_metrics
   metrics = {name: val for name, val in zip(names, outputs) if name}
 
   return metrics
 
 
-class CycleGAN_tester:
+class Tester:
   '''\
-  Tests the CycleGAN model.
+  Tests the model.
   Args:
-    cgan_model: CycleGAN keras model to train
-    optimizer: a callable that creates an optimizer
+    model: keras model to evaluate
   '''
 
-  def __init__(self, cgan_model):
+  def __init__(self, model):
 
     # Store
-    self.cgan = cgan_model
+    self.model = model
 
     # Initialize metrics
     metrics_names = get_model_metrics(None)
@@ -75,15 +79,9 @@ class CycleGAN_tester:
 
 
   def step(self, input_batch):
-    '''\
-    One evaluation step for CycleGAN.
-    Args:
-      input_batch: training batch (pair of batches of images, in this case)
-    Returns:
-      outputs of the model
-    '''
+    ''' One evaluation step '''
 
-    _cycleGAN_tester_step(self.cgan, self.metrics_mean, input_batch)
+    _tester_step(self.model, self.metrics_mean, input_batch)
 
 
   def result(self):
@@ -103,10 +101,10 @@ class CycleGAN_tester:
 
 
 @tf.function
-def _cycleGAN_tester_step(cgan, metrics_mean, input_batch):
+def _tester_step(model, metrics_mean, input_batch):
 
     # Compute
-    outputs = cgan(input_batch)
+    outputs = model(input_batch)
     metrics = get_model_metrics(outputs)
 
     # Accumulate
@@ -180,3 +178,48 @@ def _cycleGAN_trainer_step(cgan, params, optimizers, input_batch):
 
   return outputs
 
+
+class Debug_trainer:
+  ''' See CycleGAN_trainer '''
+
+  def __init__(self, debug_model, optimizer):
+
+    # Store
+    self.model = debug_model
+    debug_layer = debug_model.get_layer('Debugging')
+
+    # Also save the parameters
+    self.params = {}
+    self.params['gBA'] = debug_layer.generator_BA.trainable_variables
+
+    # Create optimizers
+    self.optimizers = {}
+    self.optimizers['gBA'] = optimizer()
+
+
+  def step(self, input_batch):
+    return _debug_trainer_step(self.model, self.params, self.optimizers,
+        input_batch)
+
+
+@tf.function
+def _debug_trainer_step(model, params, optimizers, input_batch):
+
+  # Record operations in forward step
+  with tf.GradientTape(persistent=True) as tape:
+    outputs = model(input_batch)
+    
+  # Parse losses
+  losses = get_model_metrics(outputs)
+
+  # Compute gradients
+  gradient_gBA = tape.gradient(losses['gBA_loss'], params['gBA'])
+
+  # Step
+  optimizers['gBA'].apply_gradients(zip(gradient_gBA, params['gBA']))
+
+  return outputs
+
+
+# Set
+_set_model()
