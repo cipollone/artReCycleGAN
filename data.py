@@ -14,6 +14,8 @@ import tensorflow as tf
 
 
 # Supported datasets. 'name': 'info file'
+#   These contain a list of images to consider in their directories.
+#   A blank line is used to separate train images from test
 datasets = {
     'sisley': '../datasets/art/Alfred Sisley/dataset.txt',
     'guillaumin': '../datasets/art/Armand Guillaumin/dataset.txt',
@@ -66,14 +68,14 @@ def _dataset_files(name, split):
 
   Args:
     name: a dataset name
-    split: 'train' or 'test'
+    split: 'train', 'test' or 'all'
 
   Returns:
     Dataset of all filenames, total number of images.
   '''
 
   # Checks
-  if not name in datasets or not split in ('train', 'test'):
+  if not name in datasets or not split in ('train', 'test', 'all'):
     raise ValueError('Illegal dataset specification')
 
   # Dataset info
@@ -88,11 +90,11 @@ def _dataset_files(name, split):
       break
   if split == 'train':
     files = files[:split_i]
-  else:
+  elif split == 'test':
     files = files[split_i+1:]
 
   # Paths
-  files = [os.path.join(dataset_dir, f) for f in files]
+  files = [os.path.join(dataset_dir, f) for f in files if f]
 
   # Dataset
   return tf.data.Dataset.from_tensor_slices(files), len(files)
@@ -131,7 +133,7 @@ def load(name, split, shape=(300, 300, 3), batch=None, shuffle=True):
 
   Args:
     name: a dataset name. ('classes' is a combined dataset for classification)
-    split: 'train' or 'test'
+    split: 'train', 'test' or 'all'
     shape: desired shape of each image
     batch: how many samples to return. If None, the entire dataset is returned.
     shuffle: set to false if shuffling is not necessary.
@@ -188,7 +190,7 @@ def load_few(name, split, shape, n):
   required dataset.
   Args:
     name: a dataset name
-    split: 'train' or 'test'
+    split: 'train', 'test' or 'all'
     shape: desired shape of each image
     n: number of images
   Returns:

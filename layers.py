@@ -227,7 +227,7 @@ class GeneralConvBlock(BaseLayer):
   '''
 
   def __init__(self, filters, kernel_size, stride=1, pad='valid',
-      activation=True, **kwargs):
+      activation=True, normalization=True, **kwargs):
     '''\
     Options for this block.
     Args:
@@ -238,6 +238,7 @@ class GeneralConvBlock(BaseLayer):
         means no padding, an int is the amount of reflection padding added at
         each dimension.
       activation: if true, a ReLU activation is applied.
+      normalization: if true, performs instance normalization (on by default).
     '''
     
     # Super
@@ -250,6 +251,7 @@ class GeneralConvBlock(BaseLayer):
         'stride': stride,
         'pad': pad,
         'activation': activation,
+        'normalization': normalization,
       }
 
 
@@ -258,8 +260,9 @@ class GeneralConvBlock(BaseLayer):
 
     # Vars
     stack = []
-    filters, kernel_size, stride, pad, activation = [ self.layer_options[opt] \
-        for opt in ('filters', 'kernel_size', 'stride', 'pad', 'activation') ]
+    filters, kernel_size, stride, pad, activation, normalization = \
+        [ self.layer_options[opt] for opt in ('filters', 'kernel_size',
+          'stride', 'pad', 'activation', 'normalization') ]
 
     if isinstance(pad, str):
       conv_pad, reflect_pad = pad, 0
@@ -278,7 +281,8 @@ class GeneralConvBlock(BaseLayer):
         strides=stride, padding=conv_pad) )
 
     # Normalization
-    stack.append( InstanceNormalization() )
+    if normalization:
+      stack.append( InstanceNormalization() )
 
     # Activation
     if activation:

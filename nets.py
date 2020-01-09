@@ -238,7 +238,7 @@ class Generator(BaseLayer):
           GeneralConvTransposeBlock( filters=128, kernel_size=3, stride=2 ),
           GeneralConvTransposeBlock( filters=64, kernel_size=3, stride=2 ),
           GeneralConvBlock( filters=3, kernel_size=7, stride=1, pad=3,
-              activation=False ),
+              activation=False, normalization=False ),
           tf.keras.activations.tanh,
         ]
 

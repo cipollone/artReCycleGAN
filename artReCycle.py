@@ -36,19 +36,14 @@ def train(args):
   # Summary writers
   train_summary_writer = tf.summary.create_file_writer(
       os.path.join(log_path, 'train'))
-  test_summary_writer = tf.summary.create_file_writer(
-      os.path.join(log_path, 'test'))
 
   # Define datasets
   image_shape = (300, 300, 3)
-  train_dataset, train_size = data.load_pair(*args.datasets, 'train',
-      shape=image_shape, batch=args.batch)
-  test_dataset, test_size = data.load_pair(*args.datasets, 'test',
+  train_dataset, train_size = data.load_pair(*args.datasets, 'all',
       shape=image_shape, batch=args.batch)
 
   train_dataset_it = iter(train_dataset)
-  test_dataset_it = iter(test_dataset)
-  test_samples = [data.load_few(name, 'train', image_shape, 1) \
+  few_samples = [data.load_few(name, 'all', image_shape, 1) \
       for name in args.datasets]
 
   # Define keras model
@@ -100,33 +95,23 @@ def train(args):
       if step_saver.step % args.logs == 0 or epoch_step == steps_per_epoch-1:
         print('\n> Validation')
 
-        # Evaluate on test set
+        # Evaluation
         for i in range(args.val_steps):
-          tester.step(next(test_dataset_it))
-
-        # Dict format
-        train_metrics = models.get_model_metrics(output)
-        train_metrics = {name: train_metrics[name].numpy() \
-            for name in train_metrics}
-        test_metrics = tester.result()
+          tester.step(next(train_dataset_it))
+        train_metrics = tester.result()
 
         # Log in console
         print('  Train metrics:', train_metrics)
-        print('  Test metrics:', test_metrics)
 
         # Log in TensorBoard
         with train_summary_writer.as_default():
           for metric in train_metrics:
             tf.summary.scalar(metric, train_metrics[metric],
                 step=step_saver.step)
-        with test_summary_writer.as_default():
-          for metric in test_metrics:
-            tf.summary.scalar(metric, test_metrics[metric],
-                step=step_saver.step)
 
         # Save weigths
         loss = 0
-        for m in test_metrics.values():
+        for m in train_metrics.values():
           loss += m
         saved = saver.save(score = -loss)
         if saved:
@@ -134,12 +119,12 @@ def train(args):
 
         # Transform images for visualization
         if args.images:
-          fake_A, fake_B, *_ = keras_model(test_samples)
+          fake_A, fake_B, *_ = keras_model(few_samples)
           fake_A_viz = image_unnormalize(fake_A)
           fake_B_viz = image_unnormalize(fake_B)
 
           # Log images
-          with test_summary_writer.as_default():
+          with train_summary_writer.as_default():
             tf.summary.image('fake_A', fake_A_viz, step=step_saver.step)
             tf.summary.image('fake_B', fake_B_viz, step=step_saver.step)
 
