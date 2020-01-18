@@ -23,7 +23,11 @@ def _set_model():
 
 
 def define_model(image_shape):
-  ''' Creates the model '''
+  '''\
+  Creates the model.
+  Returns:
+    keras model, and model layer
+  '''
 
   # Define
   model_layer = Model()
@@ -38,7 +42,7 @@ def define_model(image_shape):
   keras_model = tf.keras.Model(inputs=inputs, outputs=outputs,
       name=model_layer.__class__.__name__)
 
-  return keras_model
+  return keras_model, model_layer
 
 
 def get_model_metrics(outputs):

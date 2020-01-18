@@ -47,7 +47,7 @@ def train(args):
       for name in args.datasets]
 
   # Define keras model
-  keras_model = models.define_model(image_shape)
+  keras_model, model_layer = models.define_model(image_shape)
 
   # Save keras model
   keras_json = keras_model.to_json()
@@ -56,9 +56,14 @@ def train(args):
     f.write(keras_json)
 
   # Save TensorBoard graph
-  if not args.cont:
-    tbCallback = tf.keras.callbacks.TensorBoard(log_path, write_graph=True)
-    tbCallback.set_model(keras_model)
+  @tf.function
+  def tracing_model_ops(inputs):
+    return model_layer(inputs)
+
+  tf.summary.trace_on()
+  tracing_model_ops(next(train_dataset_it))
+  with train_summary_writer.as_default():
+    tf.summary.trace_export('Model', step=0)
 
   # Resuming
   if args.cont:
@@ -157,7 +162,7 @@ def use(args):
       shape=image_shape, batch=args.batch)
 
   # Define keras model
-  keras_model = models.define_model(image_shape)
+  keras_model, model_layer = models.define_model(image_shape)
 
   # Load
   keras_model.load_weights(model_checkpoint)
@@ -181,7 +186,7 @@ def debug(args):
 
   # Model
   image_shape = (300, 300, 3)
-  keras_model = models.define_model(image_shape)
+  keras_model, model_layer = models.define_model(image_shape)
 
   keras_model.summary()
 
