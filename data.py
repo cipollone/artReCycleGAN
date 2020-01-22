@@ -208,6 +208,7 @@ def load_few(name, split, shape, n):
   # Select n among all
   offset = int((size-n)/2)
   paths = paths[offset:offset+n]
+  print('- sample images:', paths)
 
   # Load all
   images = [decode_image(path, shape) for path in paths]

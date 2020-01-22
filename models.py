@@ -16,10 +16,10 @@ def _set_model():
 
   global Model, Trainer, model_metrics
 
-  Model = nets.Debugging
-  Trainer = Debug_trainer
-  model_metrics = [None, None, 'gBA_loss',]
-  #model_metrics = [None, None, 'dA_loss', 'dB_loss', 'gAB_loss', 'gBA_loss',]
+  Model = nets.CycleGAN
+  Trainer = CycleGAN_trainer
+  #model_metrics = [None, None, 'gBA_loss',]
+  model_metrics = [None, None, 'dA_loss', 'dB_loss', 'gAB_loss', 'gBA_loss',]
 
 
 def define_model(image_shape):
@@ -62,6 +62,8 @@ def get_model_metrics(outputs):
   names = model_metrics
   metrics = {name: val for name, val in zip(names, outputs) if name}
 
+  print(':: Tracing model metrics')
+
   return metrics
 
 
@@ -82,12 +84,6 @@ class Tester:
     self.metrics_mean = {name: tf.metrics.Mean(name) for name in metrics_names}
 
 
-  def step(self, input_batch):
-    ''' One evaluation step '''
-
-    _tester_step(self.model, self.metrics_mean, input_batch)
-
-
   def result(self):
     '''\
     Returns the result of last evaluation steps and clears the accumulators.
@@ -104,16 +100,18 @@ class Tester:
     return metrics_val
 
 
-@tf.function
-def _tester_step(model, metrics_mean, input_batch):
+  @tf.function
+  def step(self, input_batch):
+    ''' One evaluation step '''
 
+    print(':: Tracing trainer step')
     # Compute
-    outputs = model(input_batch)
+    outputs = self.model(input_batch)
     metrics = get_model_metrics(outputs)
 
     # Accumulate
-    for name in metrics_mean:
-      metrics_mean[name].update_state(metrics[name])
+    for name in self.metrics_mean:
+      self.metrics_mean[name].update_state(metrics[name])
 
 
 class CycleGAN_trainer:
@@ -167,6 +165,7 @@ def _cycleGAN_trainer_step(cgan, params, optimizers, input_batch):
     
   # Parse losses
   losses = get_model_metrics(outputs)
+  print(':: Tracing trainer step')
 
   # Compute gradients
   gradient_dA = tape.gradient(losses['dA_loss'], params['dA'])

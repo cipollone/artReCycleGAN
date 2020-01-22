@@ -4,6 +4,8 @@
 Main script file. Implementation of CycleGAN paper.
 Tested with Tensorflow 2.1rc0.
 '''
+# TODO: cuda out of memory error both in eager and trace mode. Why? Python error?
+# TODO: what is the default weight regularizer?
 
 import os
 import argparse

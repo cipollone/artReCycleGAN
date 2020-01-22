@@ -108,6 +108,9 @@ class CycleGAN(BaseLayer):
         self.generator_identity_loss((identities_A, images_A)) * k_id
       )
 
+    # Debugging
+    print(':: Tracing model')
+
     # Returns
     outputs = (
         fake_A,
