@@ -81,8 +81,8 @@ def train(args):
 
   # Training tools
   make_optmizer = lambda: tf.optimizers.Adam(args.rate)
-  trainer = models.Trainer(keras_model, make_optmizer)
-  tester = models.Tester(keras_model)
+  trainer = models.Trainer(keras_model, make_optmizer, train_dataset_it)
+  tester = models.Tester(keras_model, train_dataset_it)
   saver = CheckpointSaver(keras_model, model_checkpoint)
 
   # Print job
@@ -96,7 +96,7 @@ def train(args):
       print('> Step', step_saver.step, end='\r')
 
       # Train step
-      output = trainer.step(next(train_dataset_it))
+      output = trainer.step()
 
       # Validation and log
       if step_saver.step % args.logs == 0 or epoch_step == steps_per_epoch-1:
@@ -104,7 +104,7 @@ def train(args):
 
         # Evaluation
         for i in range(args.val_steps):
-          tester.step(next(train_dataset_it))
+          tester.step()
         train_metrics = tester.result()
 
         # Log in console

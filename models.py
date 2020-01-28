@@ -54,6 +54,7 @@ def get_model_metrics(outputs):
   Returns:
     dict that maps metric name to value
   '''
+  print(':: Tracing model metrics')
 
   if not outputs:
     outputs = list((None for i in range(10)))
@@ -61,8 +62,6 @@ def get_model_metrics(outputs):
   # Parse metrics
   names = model_metrics
   metrics = {name: val for name, val in zip(names, outputs) if name}
-
-  print(':: Tracing model metrics')
 
   return metrics
 
@@ -72,12 +71,14 @@ class Tester:
   Tests the model.
   Args:
     model: keras model to evaluate
+    iterator: dataset iterator of the test set
   '''
 
-  def __init__(self, model):
+  def __init__(self, model, iterator):
 
     # Store
     self.model = model
+    self.iterator = iterator
 
     # Initialize metrics
     metrics_names = get_model_metrics(None)
@@ -101,12 +102,12 @@ class Tester:
 
 
   @tf.function
-  def step(self, input_batch):
+  def step(self):
     ''' One evaluation step '''
+    print(':: Tracing tester step')
 
-    print(':: Tracing trainer step')
     # Compute
-    outputs = self.model(input_batch)
+    outputs = self.model(next(self.iterator))
     metrics = get_model_metrics(outputs)
 
     # Accumulate
@@ -120,13 +121,15 @@ class CycleGAN_trainer:
   Args:
     cgan_model: CycleGAN keras model to train
     optimizer: a callable that creates an optimizer
+    iterator: dataset iterator returning a pair of batches of images.
   '''
 
-  def __init__(self, cgan_model, optimizer):
+  def __init__(self, cgan_model, optimizer, iterator):
 
     # Store
     self.cgan = cgan_model
     cgan_layer = cgan_model.get_layer('CycleGAN')
+    self.iterator = iterator
 
     # Also save the parameters
     self.params = {}
@@ -143,47 +146,36 @@ class CycleGAN_trainer:
     self.optimizers['gBA'] = optimizer()
 
 
-  def step(self, input_batch):
-    '''\
-    One training step for CycleGAN.
-    Args:
-      input_batch: training batch (pair of batches of images, in this case)
-    Returns:
-      outputs of the model
-    '''
-    return _cycleGAN_trainer_step(self.cgan, self.params, self.optimizers,
-        input_batch)
+  @tf.function
+  def step(self):
+    ''' One training step for CycleGAN '''
+    print(':: Tracing CycleGAN trainer step')
 
+    # Record operations in forward step
+    with tf.GradientTape(persistent=True) as tape:
+      outputs = self.cgan(next(self.iterator))
+      
+    # Parse losses
+    losses = get_model_metrics(outputs)
 
-@tf.function
-def _cycleGAN_trainer_step(cgan, params, optimizers, input_batch):
-  ''' This can't be in CycleGAN_trainer due to @tf.function '''
+    # Compute gradients
+    gradient_dA = tape.gradient(losses['dA_loss'], self.params['dA'])
+    gradient_dB = tape.gradient(losses['dB_loss'], self.params['dB'])
+    gradient_gAB = tape.gradient(losses['gAB_loss'], self.params['gAB'])
+    gradient_gBA = tape.gradient(losses['gBA_loss'], self.params['gBA'])
 
-  # Record operations in forward step
-  with tf.GradientTape(persistent=True) as tape:
-    outputs = cgan(input_batch)
-    
-  # Parse losses
-  losses = get_model_metrics(outputs)
-  print(':: Tracing trainer step')
+    # Step
+    self.optimizers['dA'].apply_gradients(zip(gradient_dA, self.params['dA']))
+    self.optimizers['dB'].apply_gradients(zip(gradient_dB, self.params['dB']))
+    self.optimizers['gAB'].apply_gradients(zip(gradient_gAB, self.params['gAB']))
+    self.optimizers['gBA'].apply_gradients(zip(gradient_gBA, self.params['gBA']))
 
-  # Compute gradients
-  gradient_dA = tape.gradient(losses['dA_loss'], params['dA'])
-  gradient_dB = tape.gradient(losses['dB_loss'], params['dB'])
-  gradient_gAB = tape.gradient(losses['gAB_loss'], params['gAB'])
-  gradient_gBA = tape.gradient(losses['gBA_loss'], params['gBA'])
-
-  # Step
-  optimizers['dA'].apply_gradients(zip(gradient_dA, params['dA']))
-  optimizers['dB'].apply_gradients(zip(gradient_dB, params['dB']))
-  optimizers['gAB'].apply_gradients(zip(gradient_gAB, params['gAB']))
-  optimizers['gBA'].apply_gradients(zip(gradient_gBA, params['gBA']))
-
-  return outputs
+    return outputs
 
 
 class Debug_trainer:
   ''' See CycleGAN_trainer '''
+  # TODO: remove because it's out of date
 
   def __init__(self, debug_model, optimizer):
 
@@ -201,27 +193,22 @@ class Debug_trainer:
 
 
   def step(self, input_batch):
-    return _debug_trainer_step(self.model, self.params, self.optimizers,
-        input_batch)
+    print(':: Tracing Debug trainer step')
 
+    # Record operations in forward step
+    with tf.GradientTape(persistent=True) as tape:
+      outputs = self.model(input_batch)
+      
+    # Parse losses
+    losses = get_self.model_metrics(outputs)
 
-@tf.function
-def _debug_trainer_step(model, params, optimizers, input_batch):
+    # Compute gradients
+    gradient_gBA = tape.gradient(losses['gBA_loss'], self.params['gBA'])
 
-  # Record operations in forward step
-  with tf.GradientTape(persistent=True) as tape:
-    outputs = model(input_batch)
-    
-  # Parse losses
-  losses = get_model_metrics(outputs)
+    # Step
+    self.optimizers['gBA'].apply_gradients(zip(gradient_gBA, self.params['gBA']))
 
-  # Compute gradients
-  gradient_gBA = tape.gradient(losses['gBA_loss'], params['gBA'])
-
-  # Step
-  optimizers['gBA'].apply_gradients(zip(gradient_gBA, params['gBA']))
-
-  return outputs
+    return outputs
 
 
 # Set
