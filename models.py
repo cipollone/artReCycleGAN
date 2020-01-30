@@ -54,7 +54,6 @@ def get_model_metrics(outputs):
   Returns:
     dict that maps metric name to value
   '''
-  print(':: Tracing model metrics')
 
   if not outputs:
     outputs = list((None for i in range(10)))
@@ -104,7 +103,6 @@ class Tester:
   @tf.function
   def step(self):
     ''' One evaluation step '''
-    print(':: Tracing tester step')
 
     # Compute
     outputs = self.model(next(self.iterator))
@@ -149,7 +147,6 @@ class CycleGAN_trainer:
   @tf.function
   def step(self):
     ''' One training step for CycleGAN '''
-    print(':: Tracing CycleGAN trainer step')
 
     # Record operations in forward step
     with tf.GradientTape(persistent=True) as tape:
@@ -168,44 +165,6 @@ class CycleGAN_trainer:
     self.optimizers['dA'].apply_gradients(zip(gradient_dA, self.params['dA']))
     self.optimizers['dB'].apply_gradients(zip(gradient_dB, self.params['dB']))
     self.optimizers['gAB'].apply_gradients(zip(gradient_gAB, self.params['gAB']))
-    self.optimizers['gBA'].apply_gradients(zip(gradient_gBA, self.params['gBA']))
-
-    return outputs
-
-
-class Debug_trainer:
-  ''' See CycleGAN_trainer '''
-  # TODO: remove because it's out of date
-
-  def __init__(self, debug_model, optimizer):
-
-    # Store
-    self.model = debug_model
-    debug_layer = debug_model.get_layer('Debugging')
-
-    # Also save the parameters
-    self.params = {}
-    self.params['gBA'] = debug_layer.generator_BA.trainable_variables
-
-    # Create optimizers
-    self.optimizers = {}
-    self.optimizers['gBA'] = optimizer()
-
-
-  def step(self, input_batch):
-    print(':: Tracing Debug trainer step')
-
-    # Record operations in forward step
-    with tf.GradientTape(persistent=True) as tape:
-      outputs = self.model(input_batch)
-      
-    # Parse losses
-    losses = get_self.model_metrics(outputs)
-
-    # Compute gradients
-    gradient_gBA = tape.gradient(losses['gBA_loss'], self.params['gBA'])
-
-    # Step
     self.optimizers['gBA'].apply_gradients(zip(gradient_gBA, self.params['gBA']))
 
     return outputs
