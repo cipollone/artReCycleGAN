@@ -4,6 +4,7 @@
 Main script file. Implementation of CycleGAN paper.
 Tested with Tensorflow 2.1rc0.
 '''
+# TODO: what is the default weight regularizer?
 
 import os
 import argparse
@@ -47,7 +48,7 @@ def train(args):
       for name in args.datasets]
 
   # Define keras model
-  keras_model = models.define_model(image_shape)
+  keras_model, model_layer = models.define_model(image_shape)
 
   # Save keras model
   keras_json = keras_model.to_json()
@@ -56,9 +57,14 @@ def train(args):
     f.write(keras_json)
 
   # Save TensorBoard graph
-  if not args.cont:
-    tbCallback = tf.keras.callbacks.TensorBoard(log_path, write_graph=True)
-    tbCallback.set_model(keras_model)
+  @tf.function
+  def tracing_model_ops(inputs):
+    return model_layer(inputs)
+
+  tf.summary.trace_on()
+  tracing_model_ops(next(train_dataset_it))
+  with train_summary_writer.as_default():
+    tf.summary.trace_export('Model', step=0)
 
   # Resuming
   if args.cont:
@@ -74,8 +80,8 @@ def train(args):
 
   # Training tools
   make_optmizer = lambda: tf.optimizers.Adam(args.rate)
-  trainer = models.Trainer(keras_model, make_optmizer)
-  tester = models.Tester(keras_model)
+  trainer = models.Trainer(keras_model, make_optmizer, train_dataset_it)
+  tester = models.Tester(keras_model, train_dataset_it)
   saver = CheckpointSaver(keras_model, model_checkpoint)
 
   # Print job
@@ -89,7 +95,7 @@ def train(args):
       print('> Step', step_saver.step, end='\r')
 
       # Train step
-      output = trainer.step(next(train_dataset_it))
+      output = trainer.step()
 
       # Validation and log
       if step_saver.step % args.logs == 0 or epoch_step == steps_per_epoch-1:
@@ -97,7 +103,7 @@ def train(args):
 
         # Evaluation
         for i in range(args.val_steps):
-          tester.step(next(train_dataset_it))
+          tester.step()
         train_metrics = tester.result()
 
         # Log in console
@@ -157,7 +163,7 @@ def use(args):
       shape=image_shape, batch=args.batch)
 
   # Define keras model
-  keras_model = models.define_model(image_shape)
+  keras_model, model_layer = models.define_model(image_shape)
 
   # Load
   keras_model.load_weights(model_checkpoint)
@@ -181,7 +187,7 @@ def debug(args):
 
   # Model
   image_shape = (300, 300, 3)
-  keras_model = models.define_model(image_shape)
+  keras_model, model_layer = models.define_model(image_shape)
 
   keras_model.summary()
 

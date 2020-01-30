@@ -178,7 +178,7 @@ def load_pair(name_A, name_B, split, **kwargs):
   dataset_B, size_B = load(name_B, split, **kwargs)
 
   # Dataset size is average of the two
-  size = (size_A + size_B) / 2
+  size = int((size_A + size_B) / 2)
 
   return tf.data.Dataset.zip((dataset_A, dataset_B)), size
 
@@ -208,6 +208,7 @@ def load_few(name, split, shape, n):
   # Select n among all
   offset = int((size-n)/2)
   paths = paths[offset:offset+n]
+  print('- sample images:', paths)
 
   # Load all
   images = [decode_image(path, shape) for path in paths]

@@ -101,12 +101,12 @@ class CycleGAN(BaseLayer):
         self.generator_GAN_loss(decision_B) +
         self.generator_cycle_loss((images_A, cycled_A)) * k_cycle +
         self.generator_identity_loss((identities_B, images_B)) * k_id
-      )
+      ) /2
     generator_BA_loss = (
         self.generator_GAN_loss(decision_A) +
         self.generator_cycle_loss((images_B, cycled_B)) * k_cycle +
         self.generator_identity_loss((identities_A, images_A)) * k_id
-      )
+      ) /2
 
     # Returns
     outputs = (

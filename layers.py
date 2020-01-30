@@ -533,11 +533,24 @@ def l1_loss(inputs):
   return tf.reduce_mean(l1)
 
 
+@layerize('L2Loss', globals())
+def l2_loss(inputs):
+  '''\
+  Computes the squared L2 norm between two sets of images.
+  Args:
+    inputs: a pair of batches of images.
+  Returns:
+    a scalar loss
+  '''
+
+  img1, img2 = inputs
+  return tf.math.squared_difference(img1, img2)
+
+
 @layerize('GeneratorCycleLoss', globals())
 def generator_cycle_loss(inputs):
   '''\
   Returns the Cycle consistency loss for pairs of images.
-  Simply, an L1 loss on each pair.
   Args:
     inputs: a pair of batches of images (the first should be original images,
       the second are reconstructed ones).
@@ -552,7 +565,6 @@ def generator_cycle_loss(inputs):
 def generator_identity_loss(inputs):
   '''\
   Returns the identity loss for pairs of images.
-  Simply, an L1 loss on each pair.
   Args:
     inputs: a pair of batches of images (the first target images,
       the second should be transformed images).
