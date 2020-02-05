@@ -25,6 +25,7 @@ datasets = {
     'caillebotte': '../datasets/art/Gustave Caillebotte/dataset.txt',
     'signac': '../datasets/art/Paul Signac/dataset.txt',
     'vangogh': '../datasets/art/Vincent van Gogh/dataset.txt',
+    'escher': '../datasets/art/M.C. Escher/dataset.txt',
     'foto': '../datasets/foto/dataset.txt',
     'summer': '../datasets/summer/dataset.txt',
     'winter': '../datasets/winter/dataset.txt',

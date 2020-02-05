@@ -170,7 +170,7 @@ class InstanceNormalization(BaseLayer):
   is not included, but I leave an option here.
   '''
 
-  def __init__(self, affine=False, **kwargs):
+  def __init__(self, affine=True, **kwargs):
     '''\
     If affine is true, each channel is transformed with a scalar affine
     transformation (adding scale and offset parameters).
@@ -189,8 +189,10 @@ class InstanceNormalization(BaseLayer):
 
     if self.layer_options['affine']:
       scalars_shape = [1, 1, 1, input_shape[3]]
-      self.scale = self.add_weight(shape = scalars_shape, name='scale')
-      self.offset = self.add_weight(shape = scalars_shape, name='offset')
+      self.scale = self.add_weight(shape=scalars_shape, name='scale',
+          initializer=tf.random_normal_initializer(1, 0.02))
+      self.offset = self.add_weight(shape=scalars_shape, name='offset',
+          initializer=tf.zeros_initializer())
 
     # Built
     BaseLayer.build(self, input_shape)
@@ -278,7 +280,11 @@ class GeneralConvBlock(BaseLayer):
 
     # Convolution
     stack.append( layers.Conv2D( filters=filters, kernel_size=kernel_size,
-        strides=stride, padding=conv_pad) )
+        strides=stride, padding=conv_pad,
+        kernel_initializer=tf.random_normal_initializer(0, 0.02),
+        bias_initializer=tf.zeros_initializer(),
+        kernel_regularizer=tf.keras.regularizers.l2(l=0.01),
+      ))
 
     # Normalization
     if normalization:
@@ -333,7 +339,11 @@ class GeneralConvTransposeBlock(BaseLayer):
 
     # Convolution transpose
     stack.append( layers.Conv2DTranspose( filters=filters,
-      kernel_size=kernel_size, strides=stride, padding='same') )
+        kernel_size=kernel_size, strides=stride, padding='same',
+        kernel_initializer=tf.random_normal_initializer(0, 0.02),
+        bias_initializer=tf.zeros_initializer(),
+        kernel_regularizer=tf.keras.regularizers.l2(l=0.01),
+      ))
 
     # Normalization
     stack.append( InstanceNormalization() )

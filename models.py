@@ -7,6 +7,7 @@ define_model.
 '''
 
 import tensorflow as tf
+from queue import Queue
 
 import nets
 
@@ -18,7 +19,6 @@ def _set_model():
 
   Model = nets.CycleGAN
   Trainer = CycleGAN_trainer
-  #model_metrics = [None, None, 'gBA_loss',]
   model_metrics = [None, None, 'dA_loss', 'dB_loss', 'gAB_loss', 'gBA_loss',]
 
 
@@ -143,10 +143,39 @@ class CycleGAN_trainer:
     self.optimizers['gAB'] = optimizer()
     self.optimizers['gBA'] = optimizer()
 
+    # Training the discriminator from old samples (reducing mode variance)
+    self.gradients_dA = Queue(40)
+    self.gradients_dB = Queue(40)
 
-  @tf.function
+
   def step(self):
     ''' One training step for CycleGAN '''
+
+    # Forward step. Compute gradients
+    outputs, *gradients = self._forward()
+    gradient_dA, gradient_dB, gradient_gAB, gradient_gBA = gradients
+
+    # From old samples
+    if self.gradients_dA.full():
+      old_gradient_dA = self.gradients_dA.get_nowait() # get
+      old_gradient_dB = self.gradients_dB.get_nowait()
+      self.gradients_dA.put_nowait(gradient_dA)        # put
+      self.gradients_dB.put_nowait(gradient_dB)
+      gradient_dA = old_gradient_dA
+      gradient_dB = old_gradient_dB
+    # Normally if not ready
+    else:
+      self.gradients_dA.put_nowait(gradient_dA)        # put
+      self.gradients_dB.put_nowait(gradient_dB)
+
+    # Apply gradients
+    self._apply(gradient_dA, gradient_dB, gradient_gAB, gradient_gBA)
+
+    return outputs
+
+
+  @tf.function
+  def _forward(self):
 
     # Record operations in forward step
     with tf.GradientTape(persistent=True) as tape:
@@ -161,14 +190,19 @@ class CycleGAN_trainer:
     gradient_gAB = tape.gradient(losses['gAB_loss'], self.params['gAB'])
     gradient_gBA = tape.gradient(losses['gBA_loss'], self.params['gBA'])
 
+    return outputs, gradient_dA, gradient_dB, gradient_gAB, gradient_gBA
+
+
+  @tf.function
+  def _apply(self, gradient_dA, gradient_dB, gradient_gAB, gradient_gBA):
+
     # Step
     self.optimizers['dA'].apply_gradients(zip(gradient_dA, self.params['dA']))
     self.optimizers['dB'].apply_gradients(zip(gradient_dB, self.params['dB']))
     self.optimizers['gAB'].apply_gradients(zip(gradient_gAB, self.params['gAB']))
     self.optimizers['gBA'].apply_gradients(zip(gradient_gBA, self.params['gBA']))
 
-    return outputs
-
 
 # Set
 _set_model()
+

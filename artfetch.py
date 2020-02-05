@@ -33,6 +33,8 @@ artists = [
       "https://www.wikiart.org/en/paul-signac/all-works/text-list" ),
   ("Vincent van Gogh",
       "https://www.wikiart.org/en/vincent-van-gogh/all-works/text-list" ),
+  ("M.C. Escher",
+      "https://www.wikiart.org/en/m-c-escher/all-works/text-list" ),
   ]
 
 # Image link pattern
